@@ -5,6 +5,7 @@ import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.IntSetting;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 
@@ -23,7 +24,7 @@ public class QuickCommand extends Module {
     private final Setting<String> command = settings.getDefaultGroup().add(new StringSetting.Builder()
         .name("command")
         .description("Send a quick message/command with rich placeholders.")
-        .defaultValue("/w Wandelion {CoordX} {CoordY} {CoordZ} {Dimension}")
+        .defaultValue("/w 23571113_ {CoordX} {CoordY} {CoordZ} {Dimension}")
         .build()
     );
 
@@ -109,10 +110,10 @@ public class QuickCommand extends Module {
         ItemStack mainHand = mc.player.getMainHandStack();
         ItemStack offHand = mc.player.getOffHandStack();
 
-        ItemStack helmet = mc.player.getInventory().armor.get(3);
-        ItemStack chest = mc.player.getInventory().armor.get(2);
-        ItemStack legs = mc.player.getInventory().armor.get(1);
-        ItemStack boots = mc.player.getInventory().armor.get(0);
+        ItemStack helmet = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 3);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack legs = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 1);
+        ItemStack boots = mc.player.getInventory().getStack(SlotUtils.ARMOR_START);
 
         BlockPos posUnder = mc.player.getBlockPos().down();
         Block blockUnder = mc.world.getBlockState(posUnder).getBlock();
@@ -127,7 +128,7 @@ public class QuickCommand extends Module {
 
         List<String> nearbyNames = mc.world.getPlayers().stream()
             .filter(p -> !p.getUuid().equals(mc.player.getUuid()))
-            .map(p -> p.getGameProfile().getName())
+            .map(p -> p.getGameProfile().name())
             .collect(Collectors.toList());
 
         String nearbyPlayers = String.join(", ", nearbyNames);
@@ -153,7 +154,7 @@ public class QuickCommand extends Module {
             .replace("{OnGround}", String.valueOf(onGround))
             .replace("{Air}", String.valueOf(air))
             .replace("{FireTicks}", String.valueOf(fireTicks))
-            .replace("{SelectedSlot}", String.valueOf(mc.player.getInventory().selectedSlot))
+            .replace("{SelectedSlot}", String.valueOf(mc.player.getInventory().getSelectedSlot()))
             .replace("{BlockUnder}", blockUnder.getName().getString())
             .replace("{Biome}", biome)
             .replace("{LightLevel}", String.valueOf(light))

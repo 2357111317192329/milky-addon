@@ -3,6 +3,7 @@ package com.milky.hunt;
 import meteordevelopment.meteorclient.utils.misc.input.Input;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.item.Item;
@@ -10,6 +11,13 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.util.Hand;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtInt;
+import net.minecraft.nbt.NbtByte;
+import net.minecraft.nbt.NbtFloat;
+import net.minecraft.nbt.NbtDouble;
+import net.minecraft.nbt.NbtString;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,13 +29,38 @@ import java.net.UnknownServiceException;
 
 public class Utils
 {
+    public static int NbtgetInt(NbtCompound tag, String key, int fallback) {
+        NbtElement e = tag.get(key);
+        if (e instanceof NbtInt nbtInt) return nbtInt.intValue();
+        return fallback;
+    }
+    public static boolean NbtgetBoolean(NbtCompound tag, String key, boolean fallback) {
+        NbtElement e = tag.get(key);
+        if (e instanceof NbtByte b) return b.byteValue() != 0;
+        return fallback;
+    }
+    public static float NbtgetFloat(NbtCompound tag, String key, float fallback) {
+        NbtElement e = tag.get(key);
+        if (e instanceof NbtFloat f) return f.floatValue();
+        return fallback;
+    }
+    public static double NbtgetDouble(NbtCompound tag, String key, double fallback) {
+        NbtElement e = tag.get(key);
+        if (e instanceof NbtDouble d) return d.doubleValue();
+        return fallback;
+    }
+    public static String NbtString(NbtCompound tag, String key, String fallback) {
+        NbtElement e = tag.get(key);
+        if (e instanceof NbtString s) return s.value();
+        return fallback;
+    }
 
     // returns -1 if fails, 200 if successful, and slot of chestplate if it had to swap (needed for mio grimdura)
     public static int firework(MinecraftClient mc, boolean elytraRequired) {
 
         // cant use a rocket if not wearing an elytra
         int elytraSwapSlot = -1;
-        if (elytraRequired && !mc.player.getInventory().getArmorStack(2).isOf(Items.ELYTRA))
+        if (elytraRequired && !mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2).isOf(Items.ELYTRA))
         {
             FindItemResult itemResult = InvUtils.findInHotbar(Items.ELYTRA);
             if (!itemResult.found()) {

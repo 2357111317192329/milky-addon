@@ -139,7 +139,7 @@ public class WaypointQueue extends Module {
         BlockPos target = points[currentIndex].get();
         if (target == null) return;
 
-        Vec3d playerPos = mc.player.getPos();
+        Vec3d playerPos = mc.player.getEntityPos();
         Vec3d targetPos = new Vec3d(target.getX() + 0.5, playerPos.y, target.getZ() + 0.5);
 
         double dx = targetPos.x - playerPos.x;

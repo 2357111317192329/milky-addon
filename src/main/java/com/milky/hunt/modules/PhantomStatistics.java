@@ -201,7 +201,7 @@ public class PhantomStatistics extends Module {
         }
 
         // Update traveled distance (XZ)
-        Vec3d nowPos = mc.player.getPos();
+        Vec3d nowPos = mc.player.getEntityPos();
         if (lastPos != null) {
             double dx = nowPos.x - lastPos.x;
             double dz = nowPos.z - lastPos.z;

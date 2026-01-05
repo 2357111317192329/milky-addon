@@ -18,6 +18,7 @@ import meteordevelopment.meteorclient.systems.modules.world.Timer;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -32,6 +33,7 @@ import net.minecraft.network.packet.s2c.play.CloseScreenS2CPacket;
 import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 import com.milky.hunt.Addon;
 import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.screen.sync.ItemStackHash;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
@@ -305,11 +307,11 @@ public class BoostedBounce extends Module {
         paused = false;
         waitingForChunksToLoad = false;
         elytraToggled = false;
-        lastPos = mc.player.getPos();
-        lastUnstuckPos = mc.player.getPos();
+        lastPos = mc.player.getEntityPos();
+        lastUnstuckPos = mc.player.getEntityPos();
         stuckTimer = 0;
 
-        if (mc.player.getPos().multiply(1, 0, 1).length() >= 100) {
+        if (mc.player.getEntityPos().multiply(1, 0, 1).length() >= 100) {
             if (BaritoneAPI.getProvider().getPrimaryBaritone().getElytraProcess().currentDestination() == null) {
                 BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoal(null);
             }
@@ -340,7 +342,7 @@ public class BoostedBounce extends Module {
         if (ONLY_WHILE_COLLIDING && !mc.player.horizontalCollision) return;
 
         if (lastPos != null) {
-            double speedBps = mc.player.getPos().subtract(lastPos).multiply(20, 0, 20).length();
+            double speedBps = mc.player.getEntityPos().subtract(lastPos).multiply(20, 0, 20).length();
 
             Timer timer = Modules.get().get(Timer.class);
             if (timer.isActive()) speedBps *= timer.getMultiplier();
@@ -353,7 +355,7 @@ public class BoostedBounce extends Module {
             }
         }
 
-        lastPos = mc.player.getPos();
+        lastPos = mc.player.getEntityPos();
     }
 
     @Override
@@ -413,11 +415,11 @@ public class BoostedBounce extends Module {
         if (mc.player.squaredDistanceTo(lastUnstuckPos) < 25) stuckTimer++;
         else {
             stuckTimer = 0;
-            lastUnstuckPos = mc.player.getPos();
+            lastUnstuckPos = mc.player.getEntityPos();
         }
 
         int ty = getTargetY();
-        if (highwayObstaclePasser.get() && mc.player.getPos().length() > 100 && (
+        if (highwayObstaclePasser.get() && mc.player.getEntityPos().length() > 100 && (
             mc.player.getY() < ty || mc.player.getY() > ty + 2 ||
                 (mc.player.horizontalCollision && isFrontBlocked(mc.player)) ||
                 (portalTrap != null && portalTrap.getSquaredDistance(mc.player.getBlockPos()) < portalAvoidDistance.get() * portalAvoidDistance.get()) ||
@@ -429,7 +431,7 @@ public class BoostedBounce extends Module {
             double currDistance = distance.get();
 
             if (portalTrap != null) {
-                currDistance += mc.player.getPos().distanceTo(portalTrap.toCenterPos());
+                currDistance += mc.player.getEntityPos().distanceTo(portalTrap.toCenterPos());
                 portalTrap = null;
                 info("Pathing around portal.");
             }
@@ -442,7 +444,7 @@ public class BoostedBounce extends Module {
                 }
 
                 Vec3d unitYawVec = yawToDirection(pathYaw());
-                Vec3d travelVec = mc.player.getPos().subtract(startPos.get().toCenterPos());
+                Vec3d travelVec = mc.player.getEntityPos().subtract(startPos.get().toCenterPos());
                 double parallelCurrPosDot = travelVec.multiply(new Vec3d(1, 0, 1)).dotProduct(unitYawVec);
                 Vec3d parallelCurrPosComponent = unitYawVec.multiply(parallelCurrPosDot);
                 Vec3d pos = startPos.get().toCenterPos().add(parallelCurrPosComponent);
@@ -526,11 +528,11 @@ public class BoostedBounce extends Module {
         ItemStack chestItem = mc.player.getInventory().getStack(38);
         ItemStack hotbarSwapItem = mc.player.getInventory().getStack(slot);
 
-        Int2ObjectMap<ItemStack> changedSlots = new Int2ObjectOpenHashMap<>();
-        changedSlots.put(6, hotbarSwapItem);
-        changedSlots.put(slot + 36, chestItem);
+        Int2ObjectMap<ItemStackHash> changedSlots = new Int2ObjectOpenHashMap<>();
+        changedSlots.put(6, ItemStackHash.fromItemStack(hotbarSwapItem, mc.getNetworkHandler().getComponentHasher()));
+        changedSlots.put(slot + 36, ItemStackHash.fromItemStack(chestItem, mc.getNetworkHandler().getComponentHasher()));
 
-        sendSwapPacket(changedSlots, slot);
+        sendSwapPacket(changedSlots, (byte) slot);
     }
 
     private void sendStartFlyingPacket() {
@@ -541,18 +543,18 @@ public class BoostedBounce extends Module {
         ));
     }
 
-    private void sendSwapPacket(Int2ObjectMap<ItemStack> changedSlots, int buttonNum) {
+    private void sendSwapPacket(Int2ObjectMap<ItemStackHash> changedSlots, byte buttonNum) {
         int syncId = mc.player.currentScreenHandler.syncId;
         int stateId = mc.player.currentScreenHandler.getRevision();
 
         mc.player.networkHandler.sendPacket(new ClickSlotC2SPacket(
             syncId,
             stateId,
-            6,
+            (short)6,
             buttonNum,
             SlotActionType.SWAP,
-            new ItemStack(Items.AIR),
-            changedSlots
+            changedSlots,
+            ItemStackHash.EMPTY
         ));
     }
 
@@ -565,14 +567,14 @@ public class BoostedBounce extends Module {
         BlockPos centerPos = pos.getCenterAtY(ty);
 
         Vec3d moveDir = yawToDirection(pathYaw());
-        double distanceToHighway = distancePointToDirection(Vec3d.of(centerPos), moveDir, mc.player.getPos());
+        double distanceToHighway = distancePointToDirection(Vec3d.of(centerPos), moveDir, mc.player.getEntityPos());
         if (distanceToHighway > 21) return;
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = ty; y < ty + 3; y++) {
                     BlockPos position = new BlockPos(pos.x * 16 + x, y, pos.z * 16 + z);
-                    if (distancePointToDirection(Vec3d.of(position), moveDir, mc.player.getPos()) > portalScanWidth.get()) continue;
+                    if (distancePointToDirection(Vec3d.of(position), moveDir, mc.player.getEntityPos()) > portalScanWidth.get()) continue;
 
                     if (mc.world.getBlockState(position).getBlock().equals(Blocks.NETHER_PORTAL)) {
                         BlockPos posBehind = new BlockPos(
@@ -596,7 +598,7 @@ public class BoostedBounce extends Module {
 
     private static boolean isFrontBlocked(net.minecraft.entity.player.PlayerEntity p) {
         if (p == null || p.isRemoved()) return false;
-        World w = p.getWorld();
+        World w = p.getEntityWorld();
         Box bb = p.getBoundingBox();
         Direction facing = p.getHorizontalFacing();
         Vec3d fwd = new Vec3d(facing.getOffsetX(), 0, facing.getOffsetZ());
@@ -652,7 +654,7 @@ public class BoostedBounce extends Module {
     }
 
     private void maybeReplaceElytra() {
-        ItemStack chest = mc.player.getInventory().getArmorStack(2);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return;
         int slot = findBestElytraSlot();
         if (slot == -1) return;
@@ -746,7 +748,7 @@ public class BoostedBounce extends Module {
     }
 
     private void maybeSwapBackLeggings() {
-        ItemStack legs = mc.player.getInventory().getArmorStack(1);
+        ItemStack legs = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 1);
         boolean wearingGoldOrEmpty = legs == null || legs.isEmpty() || legs.isOf(Items.GOLDEN_LEGGINGS);
         if (!wearingGoldOrEmpty) return;
         int best = findBestNonGoldLeggingsSlot();

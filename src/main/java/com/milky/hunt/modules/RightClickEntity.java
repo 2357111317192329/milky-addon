@@ -171,7 +171,7 @@ public class RightClickEntity extends Module {
 
         Vec3d eye = target.getEyePos();
         Vec3d center = target.getBoundingBox().getCenter();
-        Vec3d mid = target.getPos().add(0, Math.max(0.2, target.getStandingEyeHeight() * 0.6), 0);
+        Vec3d mid = target.getEntityPos().add(0, Math.max(0.2, target.getStandingEyeHeight() * 0.6), 0);
 
         Vec3d[] points = new Vec3d[] { eye, mid, center };
 

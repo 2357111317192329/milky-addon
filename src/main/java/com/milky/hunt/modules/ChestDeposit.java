@@ -233,7 +233,7 @@ public class ChestDeposit extends Module {
 
     private int countInInventory(Item item) {
         int total = 0;
-        for (ItemStack st : mc.player.getInventory().main) {
+        for (ItemStack st : mc.player.getInventory().getMainStacks()) {
             if (!st.isEmpty() && st.getItem() == item) total += st.getCount();
         }
         ItemStack off = mc.player.getOffHandStack();

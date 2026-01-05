@@ -104,7 +104,7 @@ public class AutoInvertedY extends Module {
 
         Vec3d dir = mc.player.getRotationVec(1.0f);
         Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getPos().add(horizontal).add(0, 2, 0);
+        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
         BlockPos basePos = BlockPos.ofFloored(target);
 
         // Horizontal bar
@@ -148,7 +148,7 @@ public class AutoInvertedY extends Module {
 
         for (int i = 0; i < 9; i++) {
             if (mc.player.getInventory().getStack(i).getItem() == block.get().asItem()) {
-                mc.player.getInventory().selectedSlot = i;
+                mc.player.getInventory().setSelectedSlot(i);
                 break;
             }
         }
@@ -194,7 +194,7 @@ public class AutoInvertedY extends Module {
                 return;
             }
 
-            mc.player.getInventory().selectedSlot = slotToUse;
+            mc.player.getInventory().setSelectedSlot(slotToUse);
 
             if (!(mc.player.getMainHandStack().getItem() instanceof BlockItem)) {
                 error("Main hand is not a block.");

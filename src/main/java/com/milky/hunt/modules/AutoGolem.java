@@ -132,7 +132,7 @@ public class AutoGolem extends Module {
 
         Vec3d dir = mc.player.getRotationVec(1.0f);
         Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getPos().add(horizontal).add(0, 2, 0);
+        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
         BlockPos basePos = BlockPos.ofFloored(target);
 
         snowmanBlocks.add(basePos);
@@ -162,7 +162,7 @@ public class AutoGolem extends Module {
         for (int i = 0; i < 9; i++) {
             Item item = mc.player.getInventory().getStack(i).getItem();
             if (item == Items.SNOW_BLOCK) {
-                mc.player.getInventory().selectedSlot = i;
+                mc.player.getInventory().setSelectedSlot(i);
                 break;
             }
         }
@@ -178,7 +178,7 @@ public class AutoGolem extends Module {
 
         Vec3d dir = mc.player.getRotationVec(1.0f);
         Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getPos().add(horizontal).add(0, 3, 0);
+        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 3, 0);
         BlockPos basePos = BlockPos.ofFloored(target);
 
         // Iron Golem body structure
@@ -211,7 +211,7 @@ public class AutoGolem extends Module {
         for (int i = 0; i < 9; i++) {
             Item item = mc.player.getInventory().getStack(i).getItem();
             if (item == Items.IRON_BLOCK) {
-                mc.player.getInventory().selectedSlot = i;
+                mc.player.getInventory().setSelectedSlot(i);
                 break;
             }
         }
@@ -226,7 +226,7 @@ public class AutoGolem extends Module {
 
         Vec3d dir = mc.player.getRotationVec(1.0f);
         Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getPos().add(horizontal).add(0, 2, 0);
+        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
         BlockPos basePos = BlockPos.ofFloored(target);
 
         // Wither body structure
@@ -261,7 +261,7 @@ public class AutoGolem extends Module {
         for (int i = 0; i < 9; i++) {
             Item item = mc.player.getInventory().getStack(i).getItem();
             if (item == Items.SOUL_SAND) {
-                mc.player.getInventory().selectedSlot = i;
+                mc.player.getInventory().setSelectedSlot(i);
                 break;
             }
         }
@@ -374,8 +374,8 @@ public class AutoGolem extends Module {
             return;
         }
 
-        if (mc.player.getInventory().selectedSlot != slotToSelect) {
-            mc.player.getInventory().selectedSlot = slotToSelect;
+        if (mc.player.getInventory().getSelectedSlot() != slotToSelect) {
+            mc.player.getInventory().setSelectedSlot(slotToSelect);
             waitingForSlotSync = true;
             return;
         }
@@ -466,8 +466,8 @@ public class AutoGolem extends Module {
                 return;
             }
 
-            if (mc.player.getInventory().selectedSlot != slotToSelect) {
-                mc.player.getInventory().selectedSlot = slotToSelect;
+            if (mc.player.getInventory().getSelectedSlot() != slotToSelect) {
+                mc.player.getInventory().setSelectedSlot(slotToSelect);
                 waitingForSlotSync = true;
                 return;
             }
@@ -543,8 +543,8 @@ public class AutoGolem extends Module {
                 return;
             }
 
-            if (mc.player.getInventory().selectedSlot != slotToSelect) {
-                mc.player.getInventory().selectedSlot = slotToSelect;
+            if (mc.player.getInventory().getSelectedSlot() != slotToSelect) {
+                mc.player.getInventory().setSelectedSlot(slotToSelect);
                 waitingForSlotSync = true;
                 return;
             }

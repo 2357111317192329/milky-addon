@@ -137,7 +137,7 @@ public class InHand extends Module {
         if (candidate.found()) return;
         FindItemResult empty = InvUtils.findEmpty();
         if (empty.found()) {
-            InvUtils.move().fromHotbar(mc.player.getInventory().selectedSlot).to(empty.slot());
+            InvUtils.move().fromHotbar(mc.player.getInventory().getSelectedSlot()).to(empty.slot());
         }
     }
 
@@ -245,7 +245,7 @@ public class InHand extends Module {
     private boolean bringToSelectedViaSwap(FindItemResult it) {
         if (!it.found()) return false;
 
-        int selected = mc.player.getInventory().selectedSlot;
+        int selected = mc.player.getInventory().getSelectedSlot();
         if (it.isHotbar()) {
             InvUtils.swap(it.slot(), true);
             return true;

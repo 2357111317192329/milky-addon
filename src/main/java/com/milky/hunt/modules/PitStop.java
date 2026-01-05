@@ -6,6 +6,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
@@ -313,7 +314,7 @@ public class PitStop extends Module {
         }
 
         // If wearing Elytra, move it to hotbar/inventory first so swap logic can see it.
-        ItemStack chest = mc.player.getInventory().getArmorStack(ARMOR_CHEST_INDEX);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + ARMOR_CHEST_INDEX);
         if (chest != null && !chest.isEmpty() && chest.isOf(Items.ELYTRA)) {
             if (unequipAttempts >= UNEQUIP_MAX_ATTEMPTS) {
                 error("PitStop: failed to unequip Elytra (no space / lag / rollback?).");
@@ -437,7 +438,7 @@ public class PitStop extends Module {
         }
 
         boolean placed = placeOnFloorUp(ecPlace);
-        if (!placed) placed = BlockUtils.place(ecPlace, new FindItemResult(mc.player.getInventory().selectedSlot, 1), true, 0, true);
+        if (!placed) placed = BlockUtils.place(ecPlace, new FindItemResult(mc.player.getInventory().getSelectedSlot(), 1), true, 0, true);
 
         if (!placed) {
             error("PitStop: failed to place Ender Chest on platform.");
@@ -562,7 +563,7 @@ public class PitStop extends Module {
         }
 
         boolean placed = placeOnFloorUp(shulkerPlace);
-        if (!placed) placed = BlockUtils.place(shulkerPlace, new FindItemResult(mc.player.getInventory().selectedSlot, 1), true, 0, true);
+        if (!placed) placed = BlockUtils.place(shulkerPlace, new FindItemResult(mc.player.getInventory().getSelectedSlot(), 1), true, 0, true);
 
         if (!placed) {
             error("PitStop: failed to place shulker on platform.");
@@ -785,8 +786,8 @@ public class PitStop extends Module {
             return;
         }
 
-        Vec3d tp = target.getPos();
-        Vec3d pp = mc.player.getPos();
+        Vec3d tp = target.getEntityPos();
+        Vec3d pp = mc.player.getEntityPos();
         double dx = tp.x - pp.x, dz = tp.z - pp.z;
 
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
@@ -833,7 +834,7 @@ public class PitStop extends Module {
             return;
         }
 
-        Vec3d pp = mc.player.getPos();
+        Vec3d pp = mc.player.getEntityPos();
         Vec3d tp = homeCenter != null ? homeCenter : Vec3d.ofCenter(homeFeet);
 
         double dx = tp.x - pp.x, dz = tp.z - pp.z;
@@ -857,7 +858,7 @@ public class PitStop extends Module {
         double tx = homeFeet.getX() + 0.5;
         double tz = homeFeet.getZ() + 0.5;
 
-        Vec3d pp = mc.player.getPos();
+        Vec3d pp = mc.player.getEntityPos();
         double dx = tx - pp.x;
         double dz = tz - pp.z;
 
@@ -941,7 +942,7 @@ public class PitStop extends Module {
     }
 
     private ItemEntity findClosestDropEntity(boolean kit) {
-        Vec3d center = miningPos != null ? Vec3d.ofCenter(miningPos) : mc.player.getPos();
+        Vec3d center = miningPos != null ? Vec3d.ofCenter(miningPos) : mc.player.getEntityPos();
         Box box = new Box(center, center).expand(6.0);
         ItemEntity best = null;
         double bestDist = Double.MAX_VALUE;
@@ -954,7 +955,7 @@ public class PitStop extends Module {
             } else {
                 if (!s.isOf(Items.ENDER_CHEST)) continue;
             }
-            double d = mc.player.squaredDistanceTo(it.getPos());
+            double d = mc.player.squaredDistanceTo(it.getEntityPos());
             if (d < bestDist) { bestDist = d; best = it; }
         }
         return best;
@@ -1254,8 +1255,8 @@ public class PitStop extends Module {
     private void selectPreferredHotbarSlot() {
         if (mc == null || mc.player == null) return;
         int preferred = Math.max(0, Math.min(8, preferredSlot.get()));
-        if (mc.player.getInventory().selectedSlot != preferred) {
-            mc.player.getInventory().selectedSlot = preferred;
+        if (mc.player.getInventory().getSelectedSlot() != preferred) {
+            mc.player.getInventory().setSelectedSlot(preferred);
             if (mc.getNetworkHandler() != null) {
                 mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(preferred));
             }
@@ -1265,7 +1266,7 @@ public class PitStop extends Module {
     private boolean bringToSelectedViaSwap(FindItemResult it) {
         if (!it.found()) return false;
 
-        int selected = mc.player.getInventory().selectedSlot;
+        int selected = mc.player.getInventory().getSelectedSlot();
 
         if (it.isHotbar()) {
             InvUtils.swap(it.slot(), true);
@@ -1287,7 +1288,7 @@ public class PitStop extends Module {
 
     private int getFreeHotbarSlotExcluding(int exclude) {
         if (mc.player == null) return 0;
-        int selected = mc.player.getInventory().selectedSlot;
+        int selected = mc.player.getInventory().getSelectedSlot();
         for (int i = 0; i < 9; i++) {
             if (i == exclude) continue;
             if (mc.player.getInventory().getStack(i).isEmpty()) return i;

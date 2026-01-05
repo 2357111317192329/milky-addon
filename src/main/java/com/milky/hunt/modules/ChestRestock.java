@@ -222,7 +222,7 @@ public class ChestRestock extends Module {
 
     private int countInInventory(Item item) {
         int total = 0;
-        for (ItemStack st : mc.player.getInventory().main) {
+        for (ItemStack st : mc.player.getInventory().getMainStacks()) {
             if (!st.isEmpty() && st.getItem() == item) total += st.getCount();
         }
         ItemStack off = mc.player.getOffHandStack();
@@ -232,7 +232,7 @@ public class ChestRestock extends Module {
 
     private boolean hasSpaceFor(Item item) {
         int max = new ItemStack(item).getMaxCount();
-        for (ItemStack st : mc.player.getInventory().main) {
+        for (ItemStack st : mc.player.getInventory().getMainStacks()) {
             if (st.isEmpty()) return true;
             if (st.getItem() == item && st.getCount() < max) return true;
         }

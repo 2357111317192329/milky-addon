@@ -454,9 +454,9 @@ public class ValuableESP extends Module {
         Color c = new Color(near.r, near.g, near.b, near.a);
         if (interpolate) c = interpolateDistanceColor(c, far, entity, maxDist);
 
-        double x = entity.prevX + (entity.getX() - entity.prevX) * event.tickDelta;
-        double y = entity.prevY + (entity.getY() - entity.prevY) * event.tickDelta;
-        double z = entity.prevZ + (entity.getZ() - entity.prevZ) * event.tickDelta;
+        double x = entity.lastX + (entity.getX() - entity.lastX) * event.tickDelta;
+        double y = entity.lastY + (entity.getY() - entity.lastY) * event.tickDelta;
+        double z = entity.lastZ + (entity.getZ() - entity.lastZ) * event.tickDelta;
 
         double height = entity.getBoundingBox().maxY - entity.getBoundingBox().minY;
         y += height / 2;

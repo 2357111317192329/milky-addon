@@ -1,6 +1,7 @@
 package com.milky.hunt.modules;
 
 import com.milky.hunt.Addon;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -27,6 +28,7 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.screen.MerchantScreenHandler;
 import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.screen.sync.ItemStackHash;
 import net.minecraft.util.Identifier;
 import net.minecraft.village.TradeOffer;
 import net.minecraft.village.TradeOfferList;
@@ -310,10 +312,10 @@ public class Trade extends Module {
             case ClickResult -> {
                 int resultSlot = 2;
                 int revision = handler.getRevision();
-                var changedStacks = new Int2ObjectOpenHashMap<ItemStack>();
+                Int2ObjectMap<ItemStackHash> changedSlots = new Int2ObjectOpenHashMap<>();
                 mc.getNetworkHandler().sendPacket(new ClickSlotC2SPacket(
-                    handler.syncId, revision, resultSlot, 0,
-                    SlotActionType.QUICK_MOVE, ItemStack.EMPTY, changedStacks
+                    handler.syncId, revision, (short)resultSlot,(byte)0,
+                    SlotActionType.QUICK_MOVE, changedSlots,ItemStackHash.EMPTY 
                 ));
                 if (closeAfter.get()) {
                     if (mc.player != null) mc.player.closeHandledScreen();

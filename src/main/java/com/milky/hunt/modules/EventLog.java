@@ -525,7 +525,7 @@ public class EventLog extends Module {
         }
 
         if (logPosition.get()) {
-            double distanceToTarget = mc.player.getPos()
+            double distanceToTarget = mc.player.getEntityPos()
                 .multiply(1, 0, 1)
                 .distanceTo(position.get().toCenterPos().multiply(1, 0, 1));
 
@@ -772,10 +772,15 @@ public class EventLog extends Module {
                     out = dir.resolve(base + "_" + i + ".png");
                     i++;
                 }
-
-                try (NativeImage img = ScreenshotRecorder.takeScreenshot(mc.getFramebuffer())) {
-                    img.writeTo(out);
-                }
+                final Path finalOut = out;
+                ScreenshotRecorder.takeScreenshot(mc.getFramebuffer(), img -> {
+                    try (img) {
+                        img.writeTo(finalOut);
+                    }catch (Throwable t) {
+                        lastPreScreenshotFileName = null;
+                        return;
+                    }
+                });
 
                 lastPreScreenshotFileName = "MilkyMod/EventLog/" + out.getFileName().toString();
             } catch (Throwable t) {

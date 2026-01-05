@@ -1,11 +1,14 @@
 package com.milky.hunt.modules;
 
 import com.milky.hunt.Addon;
+import com.milky.hunt.Utils;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.util.math.MathHelper;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
@@ -26,6 +29,12 @@ public class SpiralFlight extends Module {
         .name("clockwise")
         .description("Visual clockwise if true; visual counterclockwise if false")
         .defaultValue(false)
+        .build()
+    );
+    private final Setting<Keybind> reset = sgControl.add(new KeybindSetting.Builder()
+        .name("reset center")
+        .description("start new spiral from now position.")
+        .defaultValue(Keybind.none())
         .build()
     );
 
@@ -109,8 +118,10 @@ public class SpiralFlight extends Module {
     private enum Phase { SPIRAL, DONE }
     private Phase phase;
 
-    private double thetaOnPath;
-    private double centerXrt, centerZrt;
+    private double thetaOnPath = 0.0;
+    private double centerXrt = 0.0;
+    private double centerZrt = 0.0;
+    private int init = 0;
 
     public SpiralFlight() {
         super(Addon.MilkyModCategory, "SpiralFlight", "Fly an Archimedean spiral.");
@@ -119,22 +130,45 @@ public class SpiralFlight extends Module {
     @Override
     public void onActivate() {
         if (mc.player == null || mc.world == null) { toggle(); return; }
-        centerXrt = mc.player.getX();
-        centerZrt = mc.player.getZ();
-        thetaOnPath = 0.0;
+        if(init==0){
+            centerXrt = mc.player.getX();
+            centerZrt = mc.player.getZ();
+            thetaOnPath = 0.0;
+            init=1;
+        }
         phase = Phase.SPIRAL;
     }
 
     @Override
     public void onDeactivate() {
         phase = Phase.DONE;
-        thetaOnPath = 0.0;
     }
-
+    @Override
+    public NbtCompound toTag() {
+        NbtCompound tag = super.toTag();
+        tag.putDouble("centerXrt", centerXrt);
+        tag.putDouble("centerZrt", centerZrt);
+        tag.putDouble("thetaOnPath", thetaOnPath); 
+        tag.putInt("init", init);
+        return tag;
+    }
+    @Override
+    public Module fromTag(NbtCompound tag) {
+        if (tag.contains("centerXrt")) centerXrt = Utils.NbtgetDouble(tag,"centerXrt",0.0);
+        if (tag.contains("centerZrt")) centerZrt = Utils.NbtgetDouble(tag,"centerZrt",0.0);
+        if (tag.contains("thetaOnPath")) thetaOnPath = Utils.NbtgetDouble(tag,"thetaOnPath",0.0);
+        if (tag.contains("init")) init = Utils.NbtgetInt(tag,"init",0);
+        return super.fromTag(tag);
+    }
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onTick(TickEvent.Pre event) {
         if (mc.player == null || mc.world == null) return;
         if (phase != Phase.SPIRAL) return;
+        if (reset.get().isPressed()){
+            centerXrt = mc.player.getX();
+            centerZrt = mc.player.getZ();
+            thetaOnPath = 0.0;
+        }
 
         final double qx = mc.player.getX(), qz = mc.player.getZ();
         final double B  = ringSpacing.get() / (2.0 * Math.PI);

@@ -18,7 +18,7 @@ public abstract class KeyBindingMixin {
 
     @Final
     @Shadow
-    private String translationKey;
+    private String id;
 
     @Unique
     BoostedBounce efly = null;
@@ -28,7 +28,7 @@ public abstract class KeyBindingMixin {
     {
         // setting it beforehand caused a crash because meteor wasnt loaded yet
         efly = efly == null ? Modules.get().get(BoostedBounce.class) : efly;
-        if (efly != null && efly.isActive() && efly.enabled() && translationKey.equals("key.forward"))
+        if (efly != null && efly.isActive() && efly.enabled() && id.equals("key.forward"))
         {
             cir.setReturnValue(true);
         }

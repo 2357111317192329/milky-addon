@@ -10,6 +10,7 @@ import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraF
 import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraFlightModes;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -347,7 +348,7 @@ public class Cruise extends Module {
     }
 
     private boolean hasEligibleElytraAvailable() {
-        ItemStack chest = mc.player.getInventory().getArmorStack(2);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return true;
         return findBestElytraSlot() != -1;
     }
@@ -376,7 +377,7 @@ public class Cruise extends Module {
     }
 
     private void maybeReplaceElytra() {
-        ItemStack chest = mc.player.getInventory().getArmorStack(2);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return;
 
         int slot = findBestElytraSlot();

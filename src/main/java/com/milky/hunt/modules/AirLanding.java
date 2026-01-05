@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -287,7 +288,7 @@ public class AirLanding extends Module {
         if (lockMainhand.get() && preferredBlockSlot >= 0 && (phase == Phase.PLACE_FOOT || phase == Phase.PLACE_REST || !queue.isEmpty())) {
             if (preferredBlockSlot < 9) {
                 ItemStack s = p.getInventory().getStack(preferredBlockSlot);
-                if (isDesiredBlockItem(s)) p.getInventory().selectedSlot = preferredBlockSlot;
+                if (isDesiredBlockItem(s)) p.getInventory().setSelectedSlot(preferredBlockSlot);
                 else preferredBlockSlot = -1;
             }
         }
@@ -510,7 +511,7 @@ public class AirLanding extends Module {
                             if (moveRocketToHotbar(target)) hotbarIdx = target;
                         }
                         if (hotbarIdx >= 0) {
-                            p.getInventory().selectedSlot = hotbarIdx;
+                            p.getInventory().setSelectedSlot(hotbarIdx);
                             rocketSlot = hotbarIdx;
                             rocketArmed = true;
                         } else {
@@ -536,7 +537,7 @@ public class AirLanding extends Module {
                             if (lastRocketCount >= 0 && now >= 0 && now < lastRocketCount) {
                                 burnFired = true;
                                 if (ensureBlockInMainHand()) {
-                                    preferredBlockSlot = p.getInventory().selectedSlot;
+                                    preferredBlockSlot = p.getInventory().getSelectedSlot();
                                 }
                                 phase = Phase.PLACE_READY;
                             } else {
@@ -551,7 +552,7 @@ public class AirLanding extends Module {
             case PLACE_READY -> {
                 if (preferredBlockSlot < 0) {
                     if (ensureBlockInMainHand()) {
-                        preferredBlockSlot = p.getInventory().selectedSlot;
+                        preferredBlockSlot = p.getInventory().getSelectedSlot();
                     }
                 }
                 double vy = p.getVelocity().y;
@@ -735,7 +736,7 @@ public class AirLanding extends Module {
 
     private boolean unequipElytraToHotbar() {
         if (mc.player == null) return false;
-        ItemStack chest = mc.player.getInventory().getArmorStack(ARMOR_CHEST_INDEX);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + ARMOR_CHEST_INDEX);
         if (chest == null || chest.isEmpty() || !chest.isOf(Items.ELYTRA)) return true;
         int target = getFreeHotbarSlotExcluding(-1);
         InvUtils.move().fromArmor(ARMOR_CHEST_INDEX).toHotbar(target);
@@ -744,7 +745,7 @@ public class AirLanding extends Module {
 
     private boolean equipElytra() {
         if (mc.player == null) return false;
-        ItemStack chest = mc.player.getInventory().getArmorStack(ARMOR_CHEST_INDEX);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + ARMOR_CHEST_INDEX);
         if (chest != null && !chest.isEmpty() && chest.isOf(Items.ELYTRA)) return true;
         FindItemResult found = InvUtils.find(Items.ELYTRA);
         if (!found.found()) return false;
@@ -806,14 +807,14 @@ public class AirLanding extends Module {
         if (found.isMainHand()) return true;
 
         if (found.isHotbar()) {
-            mc.player.getInventory().selectedSlot = found.slot();
+            mc.player.getInventory().setSelectedSlot(found.slot());
             preferredBlockSlot = found.slot();
             return isDesiredBlockItem(mc.player.getMainHandStack());
         }
 
         int targetSlot = getFreeHotbarSlotExcluding(-1);
         InvUtils.move().from(found.slot()).toHotbar(targetSlot);
-        mc.player.getInventory().selectedSlot = targetSlot;
+        mc.player.getInventory().setSelectedSlot(targetSlot);
         preferredBlockSlot = targetSlot;
 
         return isDesiredBlockItem(mc.player.getMainHandStack());
@@ -862,7 +863,7 @@ public class AirLanding extends Module {
         return ((BlockItem) s.getItem()).getBlock() == block.get();
     }
     private int getFreeHotbarSlotExcluding(int exclude) {
-        int selected = mc.player.getInventory().selectedSlot;
+        int selected = mc.player.getInventory().getSelectedSlot();
         for (int i = 0; i < 9; i++) {
             if (i == exclude) continue;
             if (mc.player.getInventory().getStack(i).isEmpty()) return i;

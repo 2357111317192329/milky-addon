@@ -6,6 +6,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -151,7 +152,7 @@ public class PullUp extends Module {
         takeoffAirTicksAcc = 0;
         takeoffRetries = 0;
 
-        if (mc.player != null) savedSlot = mc.player.getInventory().selectedSlot;
+        if (mc.player != null) savedSlot = mc.player.getInventory().getSelectedSlot();
     }
 
     @Override
@@ -167,7 +168,7 @@ public class PullUp extends Module {
         takeoffRetries = 0;
 
         if (mc.player != null && !keepMainhandRocket.get() && savedSlot >= 0 && savedSlot < 9) {
-            mc.player.getInventory().selectedSlot = savedSlot;
+            mc.player.getInventory().setSelectedSlot(savedSlot);
         }
     }
 
@@ -338,7 +339,7 @@ public class PullUp extends Module {
 
     private boolean hasElytraMeetingThreshold() {
         int min = minElytraDurability.get();
-        ItemStack chest = mc.player.getInventory().getArmorStack(2);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
         if (remainingDurability(chest) >= min) return true;
         return findBestElytraSlotAbove(min) != -1;
     }
@@ -346,7 +347,7 @@ public class PullUp extends Module {
     // Durability-aware equip (replaces old logic)
     private void equipElytraIfNeeded() {
         int min = minElytraDurability.get();
-        ItemStack chest = mc.player.getInventory().getArmorStack(2);
+        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
 
         // If already wearing a good one, keep it
         if (remainingDurability(chest) >= min) return;
@@ -368,7 +369,7 @@ public class PullUp extends Module {
 
         FindItemResult any = InvUtils.find(Items.FIREWORK_ROCKET);
         if (any.found()) {
-            InvUtils.move().from(any.slot()).toHotbar(mc.player.getInventory().selectedSlot);
+            InvUtils.move().from(any.slot()).toHotbar(mc.player.getInventory().getSelectedSlot());
         }
     }
 

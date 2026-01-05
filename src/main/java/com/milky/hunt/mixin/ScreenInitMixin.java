@@ -26,8 +26,8 @@ public abstract class ScreenInitMixin {
 
     @Shadow protected abstract <T extends Element & Drawable & Selectable> T addDrawableChild(T drawable);
 
-    @Inject(method = "init(Lnet/minecraft/client/MinecraftClient;II)V", at = @At("TAIL"))
-    private void eventlog$addOpenFolderButton(MinecraftClient client, int w, int h, CallbackInfo ci) {
+    @Inject(method = "init(II)V", at = @At("TAIL"))
+    private void eventlog$addOpenFolderButton(int w, int h, CallbackInfo ci) {//MinecraftClient client, int w, int h, CallbackInfo ci
         if (!(((Object) this) instanceof DisconnectedScreen)) return;
 
         int bw = 200;

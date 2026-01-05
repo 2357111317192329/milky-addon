@@ -1,9 +1,15 @@
 plugins {
-    id "fabric-loom" version "1.8-SNAPSHOT"
+    id "fabric-loom" version "1.14.9"
+}
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+base {
+    archivesName = project.archives_base_name
 }
 
-
-archivesBaseName = project.archives_base_name
 version = project.mod_version
 minecraft_version = project.minecraft_version
 group = project.maven_group
