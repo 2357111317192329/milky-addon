@@ -1,0 +1,14 @@
+{
+  "projectPath": ":",
+  "classpaths": {
+    "test": [
+      "C:\\Users\\uesr\\Downloads\\milky-addon-0.0.4.6\\milky-addon-0.0.4.6-0\\build\\classes\\java\\test",
+      "C:\\Users\\uesr\\Downloads\\milky-addon-0.0.4.6\\milky-addon-0.0.4.6-0\\build\\resources\\test"
+    ],
+    "main": [
+      "C:\\Users\\uesr\\Downloads\\milky-addon-0.0.4.6\\milky-addon-0.0.4.6-0\\build\\classes\\java\\main",
+      "C:\\Users\\uesr\\Downloads\\milky-addon-0.0.4.6\\milky-addon-0.0.4.6-0\\build\\resources\\main",
+      "C:\\Users\\uesr\\Downloads\\milky-addon-0.0.4.6\\milky-addon-0.0.4.6-0\\build\\devlibs\\milkymod-0.0.4.6-1.21.8-dev.jar"
+    ]
+  }
+}

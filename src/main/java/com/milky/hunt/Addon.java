@@ -8,14 +8,15 @@ import meteordevelopment.meteorclient.settings.Settings;
 import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudGroup;
 import meteordevelopment.meteorclient.systems.modules.Category;
+import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 
 public class Addon extends MeteorAddon {
     public static final Logger LOG = LogUtils.getLogger();
-    public static final Category CATEGORY = new Category("Milky Mod");
-    public static final HudGroup HUD_GROUP = new HudGroup("Milky Mod");
+    public static final Category CATEGORY = Categories.Misc;
+    public static final HudGroup HUD_GROUP = new HudGroup("Misc");
 
     public final Settings settings = new Settings();
 
@@ -37,7 +38,7 @@ public class Addon extends MeteorAddon {
 
     @Override
     public void onRegisterCategories() {
-        Modules.registerCategory(CATEGORY);
+        //Modules.registerCategory(CATEGORY);
     }
 
     @Override

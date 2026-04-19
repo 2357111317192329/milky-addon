@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "milkymod",
-  "version": "0.0.4.6-1.21.4",
+  "version": "0.0.4.6-1.21.8",
   "name": "Milky Mod",
   "description": "Moo",
   "authors": [
@@ -23,7 +23,7 @@
   },
   "depends": {
     "java": ">=21",
-    "minecraft": ">=1.21.4",
+    "minecraft": ">=1.21.8",
     "meteor-client": "*"
   }
 }

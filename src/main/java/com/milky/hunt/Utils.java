@@ -8,6 +8,7 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.util.Hand;
 import net.minecraft.nbt.NbtElement;
@@ -50,7 +51,7 @@ public class Utils
     }
     public static String NbtString(NbtCompound tag, String key, String fallback) {
         NbtElement e = tag.get(key);
-        if (e instanceof NbtString s) return s.asString();
+        if (e instanceof NbtString s) return s.value();
         return fallback;
     }
     // returns -1 if fails, 200 if successful, and slot of chestplate if it had to swap (needed for mio grimdura)
@@ -58,7 +59,7 @@ public class Utils
 
         // cant use a rocket if not wearing an elytra
         int elytraSwapSlot = -1;
-        if (elytraRequired && !mc.player.getInventory().getArmorStack(2).isOf(Items.ELYTRA))
+        if (elytraRequired && !mc.player.getEquippedStack(EquipmentSlot.CHEST).isOf(Items.ELYTRA))
         {
             FindItemResult itemResult = InvUtils.findInHotbar(Items.ELYTRA);
             if (!itemResult.found()) {
