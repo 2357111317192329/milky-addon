@@ -1,3 +1,30 @@
+# Main goal
+Make sure this 1.21.4 mod can run on 1.21.8 without crash.
+# Modified Modules
+- SpiralFlight
+  - Adding the reset botton to reset the center (And it would no longer reset flying process when disable).
+# Deleted Modules
+- AutoGolem
+- AutoInvertedY
+- ChestDeposit
+- ChestRestock
+- InHand
+- LeftClickBlock
+- Magazine
+- QuickCommand
+- RightClickBlock
+- RightClickEntity
+- Timeline
+- BoostedBounce
+- Cruise
+- AirLanding
+- PullUp
+- PitStop
+# Original code
+[https://github.com/sw1562776/milky-addon/tree/0.0.4.6](https://github.com/sw1562776/milky-addon/tree/0.0.4.6)
+
+Below are the original README.md
+-----------------------------------------------------------------------------
 # Milky Mod
 Meteor Addon For minecraft 1.21.4
 
