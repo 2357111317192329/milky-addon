@@ -6,12 +6,10 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
-
-import net.minecraft.block.Block;
-import net.minecraft.item.Item;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.Predicate;
@@ -347,10 +345,10 @@ public class Magazine extends Module {
             id = Identifier.tryParse(v);
             if (id == null) return null;
         } else {
-            id = Identifier.of("minecraft", v);
+            id = Identifier.fromNamespaceAndPath("minecraft", v);
         }
         try {
-            return Registries.ITEM.get(id);
+            return BuiltInRegistries.ITEM.getValue(id);
         } catch (Throwable t) {
             return null;
         }
@@ -367,10 +365,10 @@ public class Magazine extends Module {
             id = Identifier.tryParse(v);
             if (id == null) return null;
         } else {
-            id = Identifier.of("minecraft", v);
+            id = Identifier.fromNamespaceAndPath("minecraft", v);
         }
         try {
-            return Registries.BLOCK.get(id);
+            return BuiltInRegistries.BLOCK.getValue(id);
         } catch (Throwable t) {
             return null;
         }

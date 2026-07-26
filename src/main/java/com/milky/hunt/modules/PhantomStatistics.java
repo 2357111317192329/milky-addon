@@ -5,10 +5,10 @@ import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.mob.PhantomEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Phantom;
+import net.minecraft.world.phys.Vec3;
 import xaero.common.minimap.waypoints.Waypoint;
 import xaero.hud.minimap.BuiltInHudModules;
 import xaero.hud.minimap.module.MinimapSession;
@@ -139,7 +139,7 @@ public class PhantomStatistics extends Module {
     private final Map<UUID, Long> lastSeen = new HashMap<>();
 
     private double traveledXZ = 0.0;
-    private Vec3d lastPos = null;
+    private Vec3 lastPos = null;
 
     // record events: (distAtRecord, phantomAbsY)
     private final ArrayDeque<MarkEvent> events = new ArrayDeque<>();
@@ -193,15 +193,15 @@ public class PhantomStatistics extends Module {
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (!isActive()) return;
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         if (onlyEnd.get()) {
-            String dim = mc.world.getRegistryKey().getValue().toString();
+            String dim = mc.level.dimension().identifier().toString();
             if (!"minecraft:the_end".equals(dim)) return;
         }
 
         // Update traveled distance (XZ)
-        Vec3d nowPos = mc.player.getEntityPos();
+        Vec3 nowPos = mc.player.position();
         if (lastPos != null) {
             double dx = nowPos.x - lastPos.x;
             double dz = nowPos.z - lastPos.z;
@@ -221,14 +221,14 @@ public class PhantomStatistics extends Module {
 
         int recordedThisTick = 0;
 
-        for (Entity ent : mc.world.getEntities()) {
-            if (!(ent instanceof PhantomEntity phantom)) continue;
+        for (Entity ent : mc.level.entitiesForRendering()) {
+            if (!(ent instanceof Phantom phantom)) continue;
 
             double absY = phantom.getY();
 
             if (yFilter.get() && Math.abs(absY - py) <= dyLimit) continue;
 
-            UUID id = phantom.getUuid();
+            UUID id = phantom.getUUID();
             if (cdMs > 0) {
                 Long last = lastSeen.get(id);
                 if (last != null && (nowMs - last) < cdMs) continue;
@@ -241,7 +241,7 @@ public class PhantomStatistics extends Module {
 
             // Optional waypoint (ABSOLUTE Y is already used in waypoint coords)
             if (saveToWaypoints.get() && waypointSet != null) {
-                BlockPos p = phantom.getBlockPos(); // x,y,z are absolute coords
+                BlockPos p = phantom.blockPosition(); // x,y,z are absolute coords
                 if (!waypointExists(waypointSet, p.getX(), p.getY(), p.getZ(), waypointPrefix.get())) {
                     Waypoint wp = new Waypoint(
                         p.getX(),

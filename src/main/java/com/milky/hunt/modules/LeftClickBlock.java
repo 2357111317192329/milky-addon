@@ -6,18 +6,17 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.state.property.IntProperty;
-import net.minecraft.state.property.Property;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -89,9 +88,9 @@ public class LeftClickBlock extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (mc.world == null || mc.player == null) return;
+        if (mc.level == null || mc.player == null) return;
 
-        BlockPos playerPos = mc.player.getBlockPos();
+        BlockPos playerPos = mc.player.blockPosition();
         int r = Math.max(0, (int) Math.floor(range.get()));
         Set<Block> targetBlocks = new HashSet<>(blocks.get());
 
@@ -99,8 +98,8 @@ public class LeftClickBlock extends Module {
         if (selectedFaces.isEmpty()) return;
 
         outer:
-        for (BlockPos pos : BlockPos.iterate(playerPos.add(-r, -r, -r), playerPos.add(r, r, r))) {
-            BlockState state = mc.world.getBlockState(pos);
+        for (BlockPos pos : BlockPos.betweenClosed(playerPos.offset(-r, -r, -r), playerPos.offset(r, r, r))) {
+            BlockState state = mc.level.getBlockState(pos);
             if (!targetBlocks.contains(state.getBlock())) continue;
 
             if (!passesMaturityFilter(state)) continue;
@@ -110,8 +109,8 @@ public class LeftClickBlock extends Module {
             for (Direction face : ORDERED_FACES) {
                 if (!selectedFaces.contains(face)) continue;
 
-                Vec3d hitPos = faceCenter(pos, face);
-                if (mc.player.getEyePos().distanceTo(hitPos) > range.get()) continue;
+                Vec3 hitPos = faceCenter(pos, face);
+                if (mc.player.getEyePosition().distanceTo(hitPos) > range.get()) continue;
 
                 didAnyFaceThisBlock = true;
 
@@ -135,8 +134,8 @@ public class LeftClickBlock extends Module {
         return list;
     }
 
-    private Vec3d faceCenter(BlockPos pos, Direction dir) {
-        Vec3d c = Vec3d.ofCenter(pos);
+    private Vec3 faceCenter(BlockPos pos, Direction dir) {
+        Vec3 c = Vec3.atCenterOf(pos);
         switch (dir) {
             case UP:    return c.add(0, 0.5, 0);
             case DOWN:  return c.add(0, -0.5, 0);
@@ -149,19 +148,19 @@ public class LeftClickBlock extends Module {
     }
 
     private void attackBlockLowLevel(BlockPos pos, Direction face) {
-        if (mc.world == null || mc.getNetworkHandler() == null) return;
+        if (mc.level == null || mc.getConnection() == null) return;
 
-        mc.getNetworkHandler().sendPacket(
-            new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, pos, face)
+        mc.getConnection().send(
+            new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, pos, face)
         );
 
         if (swingHand.get()) {
-            mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+            mc.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
         }
 
         if (sendStopSameTick.get()) {
-            mc.getNetworkHandler().sendPacket(
-                new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, pos, face)
+            mc.getConnection().send(
+                new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, pos, face)
             );
         }
     }
@@ -170,19 +169,19 @@ public class LeftClickBlock extends Module {
     private boolean passesMaturityFilter(BlockState state) {
         if (!onlyMatureCrops.get()) return true;
 
-        IntProperty ageProp = getAgeProperty(state);
+        IntegerProperty ageProp = getAgeProperty(state);
         if (ageProp == null) {
             return true;
         }
 
-        int age = state.get(ageProp);
-        int maxAge = Collections.max(ageProp.getValues());
+        int age = state.getValue(ageProp);
+        int maxAge = Collections.max(ageProp.getPossibleValues());
         return age >= maxAge;
     }
 
-    private IntProperty getAgeProperty(BlockState state) {
+    private IntegerProperty getAgeProperty(BlockState state) {
         for (Property<?> prop : state.getProperties()) {
-            if (prop instanceof IntProperty intProp && "age".equals(prop.getName())) {
+            if (prop instanceof IntegerProperty intProp && "age".equals(prop.getName())) {
                 return intProp;
             }
         }

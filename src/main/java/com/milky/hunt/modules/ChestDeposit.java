@@ -9,23 +9,24 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 public class ChestDeposit extends Module {
     private enum State { IDLE, PATHING, OPEN_ONCE, WAIT_OPEN, DEPOSITING }
@@ -35,7 +36,7 @@ public class ChestDeposit extends Module {
     private final Setting<Item> targetItem = sgGeneral.add(new ItemSetting.Builder()
         .name("target-item")
         .description("Item to deposit into the chest.")
-        .defaultValue(net.minecraft.item.Items.SEAGRASS)
+        .defaultValue(net.minecraft.world.item.Items.SEAGRASS)
         .build()
     );
 
@@ -76,7 +77,7 @@ public class ChestDeposit extends Module {
     private static final int WAIT_OPEN_TICKS_MAX = 10;
 
     private State state = State.IDLE;
-    private BlockPos chestPos = BlockPos.ORIGIN;
+    private BlockPos chestPos = BlockPos.ZERO;
     private int waitOpenTicks = 0;
 
     public ChestDeposit() {
@@ -86,7 +87,7 @@ public class ChestDeposit extends Module {
     @Override
     public void onActivate() {
         chestPos = chestPosSetting.get();
-        if (mc.player == null || mc.world == null) { toggle(); return; }
+        if (mc.player == null || mc.level == null) { toggle(); return; }
         if (extraToDeposit() <= 0) { toggle(); return; }
         state = State.IDLE;
         waitOpenTicks = 0;
@@ -101,7 +102,7 @@ public class ChestDeposit extends Module {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onTick(TickEvent.Pre e) {
-        if (mc.player == null || mc.world == null) { toggle(); return; }
+        if (mc.player == null || mc.level == null) { toggle(); return; }
 
         if (extraToDeposit() <= 0) { finishAndToggle(); return; }
 
@@ -111,7 +112,7 @@ public class ChestDeposit extends Module {
                 state = State.PATHING;
             }
             case PATHING -> {
-                if (mc.player.getBlockPos().isWithinDistance(chestPos, reachDistance.get())) {
+                if (mc.player.blockPosition().closerThan(chestPos, reachDistance.get())) {
                     stopBaritone();
                     state = State.OPEN_ONCE;
                 }
@@ -159,38 +160,38 @@ public class ChestDeposit extends Module {
     }
 
     private boolean isContainerOpen() {
-        ScreenHandler h = mc.player.currentScreenHandler;
-        return h != null && h != mc.player.playerScreenHandler;
+        AbstractContainerMenu h = mc.player.containerMenu;
+        return h != null && h != mc.player.inventoryMenu;
     }
 
     private void closeIfOpen() {
         if (mc == null || mc.player == null) return;
 
         if (isContainerOpen()) {
-            mc.player.closeHandledScreen();
+            mc.player.closeContainer();
         }
-        if (mc.currentScreen != null) {
+        if (mc.screen != null) {
             mc.setScreen(null);
         }
     }
 
     private void tryOpenChestPacket(BlockPos pos) {
-        MinecraftClient m = mc;
-        if (m.player == null || m.world == null || m.getNetworkHandler() == null) return;
+        Minecraft m = mc;
+        if (m.player == null || m.level == null || m.getConnection() == null) return;
 
-        Vec3d hitVec = Vec3d.ofCenter(pos).add(0, 0.5, 0);
+        Vec3 hitVec = Vec3.atCenterOf(pos).add(0, 0.5, 0);
         BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, pos, false);
 
-        var pum = ((ClientWorld) m.world).getPendingUpdateManager();
-        pum.incrementSequence();
-        int sequence = pum.getSequence();
+        var pum = ((ClientLevel) m.level).getBlockStatePredictionHandler();
+        pum.startPredicting();
+        int sequence = pum.currentSequence();
 
-        m.getNetworkHandler().sendPacket(new PlayerInteractBlockC2SPacket(Hand.MAIN_HAND, hit, sequence));
-        m.getNetworkHandler().sendPacket(new HandSwingC2SPacket(Hand.MAIN_HAND));
+        m.getConnection().send(new ServerboundUseItemOnPacket(InteractionHand.MAIN_HAND, hit, sequence));
+        m.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
     }
 
     private int depositSome(Item item, int budget, int keep) {
-        ScreenHandler h = mc.player.currentScreenHandler;
+        AbstractContainerMenu h = mc.player.containerMenu;
         if (h == null) return 0;
 
         int clicks = 0;
@@ -200,14 +201,14 @@ public class ChestDeposit extends Module {
 
         int currentCount = countInInventory(item);
 
-        if (h instanceof GenericContainerScreenHandler) {
+        if (h instanceof ChestMenu) {
             for (int i = playerStart; i < playerEnd && clicks < budget; i++) {
                 Slot s = h.slots.get(i);
-                ItemStack st = s.getStack();
+                ItemStack st = s.getItem();
                 if (!st.isEmpty() && st.getItem() == item) {
                     int stackCount = st.getCount();
                     if (currentCount - stackCount < keep) continue;
-                    mc.interactionManager.clickSlot(h.syncId, i, 0, SlotActionType.QUICK_MOVE, mc.player);
+                    mc.gameMode.handleContainerInput(h.containerId, i, 0, ContainerInput.QUICK_MOVE, mc.player);
                     currentCount -= stackCount;
                     clicks++;
                     if (currentCount <= keep) break;
@@ -218,11 +219,11 @@ public class ChestDeposit extends Module {
 
         for (int i = playerStart; i < playerEnd && clicks < budget; i++) {
             Slot s = h.slots.get(i);
-            ItemStack st = s.getStack();
+            ItemStack st = s.getItem();
             if (!st.isEmpty() && st.getItem() == item) {
                 int stackCount = st.getCount();
                 if (currentCount - stackCount < keep) continue;
-                mc.interactionManager.clickSlot(h.syncId, i, 0, SlotActionType.QUICK_MOVE, mc.player);
+                mc.gameMode.handleContainerInput(h.containerId, i, 0, ContainerInput.QUICK_MOVE, mc.player);
                 currentCount -= stackCount;
                 clicks++;
                 if (currentCount <= keep) break;
@@ -233,10 +234,10 @@ public class ChestDeposit extends Module {
 
     private int countInInventory(Item item) {
         int total = 0;
-        for (ItemStack st : mc.player.getInventory().getMainStacks()) {
+        for (ItemStack st : mc.player.getInventory().getNonEquipmentItems()) {
             if (!st.isEmpty() && st.getItem() == item) total += st.getCount();
         }
-        ItemStack off = mc.player.getOffHandStack();
+        ItemStack off = mc.player.getOffhandItem();
         if (!off.isEmpty() && off.getItem() == item) total += off.getCount();
         return total;
     }
@@ -249,6 +250,6 @@ public class ChestDeposit extends Module {
     public String getInfoString() {
         FindItemResult r = InvUtils.find(targetItem.get());
         int extra = Math.max(0, r.count() - keepAtLeast.get());
-        return targetItem.get().getName().getString() + "*" + extra;
+        return Names.get(targetItem.get()) + "*" + extra;
     }
 }

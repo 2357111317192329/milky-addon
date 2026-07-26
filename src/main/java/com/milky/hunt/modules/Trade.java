@@ -14,25 +14,24 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.EnchantmentHelper;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
-import net.minecraft.network.packet.c2s.play.CloseHandledScreenC2SPacket;
-import net.minecraft.network.packet.c2s.play.SelectMerchantTradeC2SPacket;
-import net.minecraft.network.packet.s2c.play.SetTradeOffersS2CPacket;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.screen.MerchantScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.screen.sync.ItemStackHash;
-import net.minecraft.util.Identifier;
-import net.minecraft.village.TradeOffer;
-import net.minecraft.village.TradeOfferList;
-
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.HashedStack;
+import net.minecraft.network.protocol.game.ClientboundMerchantOffersPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.MerchantMenu;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -111,7 +110,7 @@ public class Trade extends Module {
 
     private boolean haveOffers = false;
     private int screenSyncId = -1;
-    private TradeOfferList offers = null;
+    private MerchantOffers offers = null;
     private int selectedOfferIdx = -1;
     private enum Step { Idle, SelectOffer, DelayThenClick, ClickResult, CloseAfterDelay }
     private Step step = Step.Idle;
@@ -140,35 +139,35 @@ public class Trade extends Module {
         delayTicks = 0;
     }
 
-    private void closeTradeScreen(MerchantScreenHandler handler) {
-        if (mc.player != null) mc.player.closeHandledScreen();
-        if (mc.getNetworkHandler() != null) mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(handler.syncId));
+    private void closeTradeScreen(MerchantMenu handler) {
+        if (mc.player != null) mc.player.closeContainer();
+        if (mc.getConnection() != null) mc.getConnection().send(new ServerboundContainerClosePacket(handler.containerId));
         resetSession();
     }
 
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
-        if (!(event.packet instanceof SetTradeOffersS2CPacket pkt)) return;
-        if (!(mc.player != null && mc.player.currentScreenHandler instanceof MerchantScreenHandler handler)) return;
-        if (pkt.getSyncId() != handler.syncId) return;
+        if (!(event.packet instanceof ClientboundMerchantOffersPacket pkt)) return;
+        if (!(mc.player != null && mc.player.containerMenu instanceof MerchantMenu handler)) return;
+        if (pkt.getContainerId() != handler.containerId) return;
         applyOffers(handler, pkt.getOffers(), "packet");
     }
 
-    private void tryPullOffersFromHandler(MerchantScreenHandler handler) {
-        TradeOfferList list = handler.getRecipes();
+    private void tryPullOffersFromHandler(MerchantMenu handler) {
+        MerchantOffers list = handler.getOffers();
         if (list != null && !list.isEmpty()) applyOffers(handler, list, "handler:getRecipes");
     }
 
-    private void applyOffers(MerchantScreenHandler handler, TradeOfferList list, String source) {
+    private void applyOffers(MerchantMenu handler, MerchantOffers list, String source) {
         offers = list;
-        screenSyncId = handler.syncId;
+        screenSyncId = handler.containerId;
         haveOffers = offers != null && !offers.isEmpty();
         selectedOfferIdx = -1;
         step = Step.Idle;
         if (!haveOffers) return;
         for (int i = 0; i < offers.size(); i++) {
-            TradeOffer o = offers.get(i);
-            if (o.isDisabled() || o.getUses() >= o.getMaxUses()) continue;
+            MerchantOffer o = offers.get(i);
+            if (o.isOutOfStock() || o.getUses() >= o.getMaxUses()) continue;
             if (matchesByMode(o)) { selectedOfferIdx = i; break; }
         }
         if (selectedOfferIdx >= 0) {
@@ -183,17 +182,17 @@ public class Trade extends Module {
         }
     }
 
-    private boolean matchesByMode(TradeOffer o) {
+    private boolean matchesByMode(MerchantOffer o) {
         if (mode.get() == Mode.Buy) {
             Item wantResult = buyItem.get();
             if (wantResult == null) return false;
-            Item resultItem = o.getSellItem().getItem();
+            Item resultItem = o.getResult().getItem();
             if (resultItem != wantResult) return false;
             if (resultItem == Items.ENCHANTED_BOOK) {
                 String line = enchTargetsLine.get();
                 if (!(line == null || line.isBlank())) {
                     List<EnchTarget> targets = parseEnchTargets(line);
-                    if (!targets.isEmpty() && !enchantedBookMatchesExactly(o.getSellItem(), targets)) return false;
+                    if (!targets.isEmpty() && !enchantedBookMatchesExactly(o.getResult(), targets)) return false;
                 }
             }
             int emeraldCost = emeraldCostOfOffer(o);
@@ -201,26 +200,26 @@ public class Trade extends Module {
             if (maxP > 0 && emeraldCost > maxP) return false;
             return true;
         } else {
-            if (o.getSellItem().getItem() != Items.EMERALD) return false;
+            if (o.getResult().getItem() != Items.EMERALD) return false;
             Item targetCost = sellCostItem.get();
             if (targetCost == null) return false;
-            Item a = o.getOriginalFirstBuyItem().getItem();
-            Item b = o.getSecondBuyItem().map(t -> t.item().value()).orElse(null);
+            Item a = o.getBaseCostA().getItem();
+            Item b = o.getItemCostB().map(t -> t.item().value()).orElse(null);
             if (!(a == targetCost || (b != null && b == targetCost))) return false;
-            int emeraldOut = o.getSellItem().getCount();
+            int emeraldOut = o.getResult().getCount();
             int minP = sellMinPrice.get();
             if (minP > 0 && emeraldOut < minP) return false;
             return true;
         }
     }
 
-    private int emeraldCostOfOffer(TradeOffer o) {
+    private int emeraldCostOfOffer(MerchantOffer o) {
         int cost = 0;
-        ItemStack displayed = o.getDisplayedFirstBuyItem();
+        ItemStack displayed = o.getCostA();
         if (displayed.getItem() == Items.EMERALD) {
             cost += Math.max(1, displayed.getCount());
         }
-        var sb = o.getSecondBuyItem();
+        var sb = o.getItemCostB();
         if (sb.isPresent() && sb.get().item().value() == Items.EMERALD) {
             cost += sb.get().count();
         }
@@ -255,22 +254,22 @@ public class Trade extends Module {
                 continue;
             }
             if (lv <= 0) continue;
-            Identifier id = Identifier.of(ns, name);
+            Identifier id = Identifier.fromNamespaceAndPath(ns, name);
             out.add(new EnchTarget(id, lv));
         }
         return out;
     }
 
     private boolean enchantedBookMatchesExactly(ItemStack book, List<EnchTarget> targets) {
-        if (book.get(DataComponentTypes.STORED_ENCHANTMENTS) == null) return false;
-        var enchMap = EnchantmentHelper.getEnchantments(book);
-        for (var entry : enchMap.getEnchantmentEntries()) {
-            RegistryEntry<Enchantment> key = entry.getKey();
+        if (book.get(DataComponents.STORED_ENCHANTMENTS) == null) return false;
+        var enchMap = EnchantmentHelper.getEnchantmentsForCrafting(book);
+        for (var entry : enchMap.entrySet()) {
+            Holder<Enchantment> key = entry.getKey();
             int level = entry.getIntValue();
-            if (mc.world == null) continue;
-            var optReg = mc.world.getRegistryManager().getOptional(RegistryKeys.ENCHANTMENT);
+            if (mc.level == null) continue;
+            var optReg = mc.level.registryAccess().lookup(Registries.ENCHANTMENT);
             if (optReg.isEmpty()) continue;
-            Identifier onBook = optReg.get().getId(key.value());
+            Identifier onBook = optReg.get().getKey(key.value());
             if (onBook == null) continue;
             for (EnchTarget t : targets) {
                 if (t.id.equals(onBook) && level == t.level) return true;
@@ -286,7 +285,7 @@ public class Trade extends Module {
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (mc.player == null) return;
-        if (!(mc.player.currentScreenHandler instanceof MerchantScreenHandler handler)) {
+        if (!(mc.player.containerMenu instanceof MerchantMenu handler)) {
             if (haveOffers) resetSession();
             return;
         }
@@ -294,7 +293,7 @@ public class Trade extends Module {
             tryPullOffersFromHandler(handler);
             return;
         }
-        if (handler.syncId != screenSyncId) { resetSession(); return; }
+        if (handler.containerId != screenSyncId) { resetSession(); return; }
 
         if (step != Step.CloseAfterDelay) {
             if (selectedOfferIdx < 0 || selectedOfferIdx >= offers.size()) return;
@@ -302,7 +301,7 @@ public class Trade extends Module {
 
         switch (step) {
             case SelectOffer -> {
-                mc.getNetworkHandler().sendPacket(new SelectMerchantTradeC2SPacket(selectedOfferIdx));
+                mc.getConnection().send(new ServerboundSelectTradePacket(selectedOfferIdx));
                 delayTicks = Math.max(0, selectDelayTicks.get());
                 step = Step.DelayThenClick;
             }
@@ -311,15 +310,15 @@ public class Trade extends Module {
             }
             case ClickResult -> {
                 int resultSlot = 2;
-                int revision = handler.getRevision();
-                Int2ObjectMap<ItemStackHash> changedSlots = new Int2ObjectOpenHashMap<>();
-                mc.getNetworkHandler().sendPacket(new ClickSlotC2SPacket(
-                    handler.syncId, revision, (short)resultSlot,(byte)0,
-                    SlotActionType.QUICK_MOVE, changedSlots,ItemStackHash.EMPTY 
+                int revision = handler.getStateId();
+                Int2ObjectMap<HashedStack> changedSlots = new Int2ObjectOpenHashMap<>();
+                mc.getConnection().send(new ServerboundContainerClickPacket(
+                    handler.containerId, revision, (short)resultSlot,(byte)0,
+                    ContainerInput.QUICK_MOVE, changedSlots,HashedStack.EMPTY 
                 ));
                 if (closeAfter.get()) {
-                    if (mc.player != null) mc.player.closeHandledScreen();
-                    mc.getNetworkHandler().sendPacket(new CloseHandledScreenC2SPacket(handler.syncId));
+                    if (mc.player != null) mc.player.closeContainer();
+                    mc.getConnection().send(new ServerboundContainerClosePacket(handler.containerId));
                 }
                 resetSession();
             }

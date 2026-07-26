@@ -12,20 +12,28 @@ import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.Enchantments;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.*;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.FishingRodItem;
+import net.minecraft.world.item.FlintAndSteelItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.MaceItem;
+import net.minecraft.world.item.ShearsItem;
+import net.minecraft.world.item.ShieldItem;
+import net.minecraft.world.item.TridentItem;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.phys.AABB;
 import java.util.*;
 
 public class ValuableESP extends Module {
@@ -132,7 +140,7 @@ public class ValuableESP extends Module {
         .build()
     );
 
-    private final Setting<Set<RegistryKey<Enchantment>>> toolenchants = sgItems.add(new EnchantmentListSetting.Builder()
+    private final Setting<Set<ResourceKey<Enchantment>>> toolenchants = sgItems.add(new EnchantmentListSetting.Builder()
         .name("mining-tool-enchants")
         .description("Required enchantments for mining tools.")
         .visible(() -> enchants.get() && certainenchants.get())
@@ -140,7 +148,7 @@ public class ValuableESP extends Module {
         .build()
     );
 
-    private final Setting<Set<RegistryKey<Enchantment>>> swordenchants = sgItems.add(new EnchantmentListSetting.Builder()
+    private final Setting<Set<ResourceKey<Enchantment>>> swordenchants = sgItems.add(new EnchantmentListSetting.Builder()
         .name("sword-enchants")
         .description("Required enchantments for swords.")
         .visible(() -> enchants.get() && certainenchants.get())
@@ -148,7 +156,7 @@ public class ValuableESP extends Module {
         .build()
     );
 
-    private final Setting<Set<RegistryKey<Enchantment>>> armorenchants = sgItems.add(new EnchantmentListSetting.Builder()
+    private final Setting<Set<ResourceKey<Enchantment>>> armorenchants = sgItems.add(new EnchantmentListSetting.Builder()
         .name("armor-enchants")
         .description("Required enchantments for armor.")
         .visible(() -> enchants.get() && certainenchants.get())
@@ -156,7 +164,7 @@ public class ValuableESP extends Module {
         .build()
     );
 
-    private final Setting<Set<RegistryKey<Enchantment>>> maceenchants = sgItems.add(new EnchantmentListSetting.Builder()
+    private final Setting<Set<ResourceKey<Enchantment>>> maceenchants = sgItems.add(new EnchantmentListSetting.Builder()
         .name("mace-enchants")
         .description("Required enchantments for maces.")
         .visible(() -> enchants.get() && certainenchants.get())
@@ -164,7 +172,7 @@ public class ValuableESP extends Module {
         .build()
     );
 
-    private final Setting<Set<RegistryKey<Enchantment>>> tridentenchants = sgItems.add(new EnchantmentListSetting.Builder()
+    private final Setting<Set<ResourceKey<Enchantment>>> tridentenchants = sgItems.add(new EnchantmentListSetting.Builder()
         .name("trident-enchants")
         .description("Required enchantments for tridents.")
         .visible(() -> enchants.get() && certainenchants.get())
@@ -347,9 +355,9 @@ public class ValuableESP extends Module {
         itemCount = 0;
         mobCount = 0;
 
-        if (mc.world == null) return;
+        if (mc.level == null) return;
 
-        for (Entity entity : mc.world.getEntities()) {
+        for (Entity entity : mc.level.entitiesForRendering()) {
             if (entity instanceof ItemEntity itemEntity) {
                 handleItemEntity(event, itemEntity);
             } else if (mobEnabled.get() && entity instanceof LivingEntity livingEntity) {
@@ -362,11 +370,11 @@ public class ValuableESP extends Module {
         if (shouldSkipDroppedItem(itemEntity)) return;
 
         if (!scannedItems.contains(itemEntity) && itemChatFeedback.get()) {
-            StringBuilder message = new StringBuilder(itemEntity.getStack().getItem().getName().getString()).append(" found");
+            StringBuilder message = new StringBuilder(Names.get(itemEntity.getItem().getItem())).append(" found");
             if (itemCoordsInChat.get()) {
                 message.append(" at ").append(itemEntity.getBlockX()).append(", ").append(itemEntity.getBlockY()).append(", ").append(itemEntity.getBlockZ());
             }
-            ChatUtils.sendMsg(Text.of(message.toString()));
+            ChatUtils.sendMsg(Component.nullToEmpty(message.toString()));
         }
 
         scannedItems.add(itemEntity);
@@ -390,7 +398,7 @@ public class ValuableESP extends Module {
         if (shouldSkipMob(livingEntity)) return;
 
         if (!scannedMobs.contains(livingEntity) && mobChatFeedback.get()) {
-            StringBuilder message = new StringBuilder(livingEntity.getType().getName().getString())
+            StringBuilder message = new StringBuilder(livingEntity.getType().getDescription().getString())
                 .append(" found (likely wearing player gear)");
 
             if (mobCoordsInChat.get()) {
@@ -402,15 +410,15 @@ public class ValuableESP extends Module {
                 if (!playerItems.isEmpty()) {
                     message.append(" holding ");
                     for (Item item : playerItems) {
-                        String[] parts = item.getTranslationKey().split("\\.");
-                        String shortName = parts.length >= 3 ? parts[2] : item.getTranslationKey();
+                        String[] parts = item.getDescriptionId().split("\\.");
+                        String shortName = parts.length >= 3 ? parts[2] : item.getDescriptionId();
                         message.append(shortName).append(", ");
                     }
                     message.setLength(message.length() - 2);
                 }
             }
 
-            ChatUtils.sendMsg(Text.of(message.toString()));
+            ChatUtils.sendMsg(Component.nullToEmpty(message.toString()));
         }
 
         scannedMobs.add(livingEntity);
@@ -436,11 +444,11 @@ public class ValuableESP extends Module {
         lineColorOut.set(renderColor);
         sideColorOut.set(renderColor).a((int) (sideColorOut.a * fillOpacity.get()));
 
-        double x = MathHelper.lerp(event.tickDelta, entity.lastRenderX, entity.getX()) - entity.getX();
-        double y = MathHelper.lerp(event.tickDelta, entity.lastRenderY, entity.getY()) - entity.getY();
-        double z = MathHelper.lerp(event.tickDelta, entity.lastRenderZ, entity.getZ()) - entity.getZ();
+        double x = Mth.lerp(event.tickDelta, entity.xOld, entity.getX()) - entity.getX();
+        double y = Mth.lerp(event.tickDelta, entity.yOld, entity.getY()) - entity.getY();
+        double z = Mth.lerp(event.tickDelta, entity.zOld, entity.getZ()) - entity.getZ();
 
-        Box box = entity.getBoundingBox();
+        AABB box = entity.getBoundingBox();
         event.renderer.box(
             x + box.minX, y + box.minY, z + box.minZ,
             x + box.maxX, y + box.maxY, z + box.maxZ,
@@ -449,14 +457,14 @@ public class ValuableESP extends Module {
     }
 
     private void drawTracer(Render3DEvent event, Entity entity, SettingColor near, boolean interpolate, SettingColor far, int maxDist) {
-        if (mc.options.hudHidden) return;
+        if (mc.options.hideGui) return;
 
         Color c = new Color(near.r, near.g, near.b, near.a);
         if (interpolate) c = interpolateDistanceColor(c, far, entity, maxDist);
 
-        double x = entity.lastX + (entity.getX() - entity.lastX) * event.tickDelta;
-        double y = entity.lastY + (entity.getY() - entity.lastY) * event.tickDelta;
-        double z = entity.lastZ + (entity.getZ() - entity.lastZ) * event.tickDelta;
+        double x = entity.xo + (entity.getX() - entity.xo) * event.tickDelta;
+        double y = entity.yo + (entity.getY() - entity.yo) * event.tickDelta;
+        double z = entity.zo + (entity.getZ() - entity.zo) * event.tickDelta;
 
         double height = entity.getBoundingBox().maxY - entity.getBoundingBox().minY;
         y += height / 2;
@@ -486,8 +494,8 @@ public class ValuableESP extends Module {
     }
 
     private Color interpolateDistanceColor(Color near, SettingColor far, Entity e, int maxDistance) {
-        double dist = Math.sqrt(mc.player.squaredDistanceTo(e));
-        double percent = MathHelper.clamp(dist / (double) maxDistance, 0, 1);
+        double dist = Math.sqrt(mc.player.distanceToSqr(e));
+        double percent = Mth.clamp(dist / (double) maxDistance, 0, 1);
 
         int r = (int) (near.r + (far.r - near.r) * percent);
         int g = (int) (near.g + (far.g - near.g) * percent);
@@ -499,9 +507,9 @@ public class ValuableESP extends Module {
 
     private double getFadeAlpha(Entity entity) {
         double distSq = PlayerUtils.squaredDistanceToCamera(
-            entity.getX() + entity.getWidth() / 2,
+            entity.getX() + entity.getBbWidth() / 2,
             entity.getY() + entity.getEyeHeight(entity.getPose()),
-            entity.getZ() + entity.getWidth() / 2
+            entity.getZ() + entity.getBbWidth() / 2
         );
 
         double fade = fadeDistance.get();
@@ -517,12 +525,12 @@ public class ValuableESP extends Module {
 
     // ---------------- Item logic ----------------
     private boolean shouldSkipDroppedItem(ItemEntity entity) {
-        ItemStack stack = entity.getStack();
+        ItemStack stack = entity.getItem();
         boolean skip = false;
 
         if (enchants.get()) {
             if (!certainenchants.get()
-                && (isTool(stack) || isArmor(stack) || stack.isIn(ItemTags.SWORDS)
+                && (isTool(stack) || isArmor(stack) || stack.is(ItemTags.SWORDS)
                     || stack.getItem() instanceof FishingRodItem
                     || stack.getItem() instanceof FlintAndSteelItem
                     || stack.getItem() instanceof MaceItem
@@ -536,7 +544,7 @@ public class ValuableESP extends Module {
             } else if (certainenchants.get()) {
                 if (isTool(stack)) {
                     skip = !hasAllRequiredEnchants(stack, toolenchants.get());
-                } else if (stack.isIn(ItemTags.SWORDS)) {
+                } else if (stack.is(ItemTags.SWORDS)) {
                     skip = !hasAllRequiredEnchants(stack, swordenchants.get());
                 } else if (isArmor(stack)) {
                     skip = !hasAllRequiredEnchants(stack, armorenchants.get());
@@ -554,8 +562,8 @@ public class ValuableESP extends Module {
 
     // ---------------- Mob logic ----------------
     private boolean shouldSkipMob(LivingEntity entity) {
-        if (entity.isPlayer()) return true;
-        if (entity == mc.getCameraEntity() && mc.options.getPerspective().isFirstPerson()) return true;
+        if (entity.isAlwaysTicking()) return true;
+        if (entity == mc.getCameraEntity() && mc.options.getCameraType().isFirstPerson()) return true;
         if (!EntityUtils.isInRenderDistance(entity)) return true;
 
         ArrayList<Item> playerItems = getPlayerItems(entity);
@@ -584,7 +592,7 @@ public class ValuableESP extends Module {
             boolean skip = false;
             if (enchants.get()) {
                 if (!certainenchants.get()
-                    && (isTool(stack) || isArmor(stack) || stack.isIn(ItemTags.SWORDS)
+                    && (isTool(stack) || isArmor(stack) || stack.is(ItemTags.SWORDS)
                         || stack.getItem() instanceof FishingRodItem
                         || stack.getItem() instanceof FlintAndSteelItem
                         || stack.getItem() instanceof MaceItem
@@ -598,7 +606,7 @@ public class ValuableESP extends Module {
                 } else if (certainenchants.get()) {
                     if (isTool(stack)) {
                         skip = !hasAllRequiredEnchants(stack, toolenchants.get());
-                    } else if (stack.isIn(ItemTags.SWORDS)) {
+                    } else if (stack.is(ItemTags.SWORDS)) {
                         skip = !hasAllRequiredEnchants(stack, swordenchants.get());
                     } else if (isArmor(stack)) {
                         skip = !hasAllRequiredEnchants(stack, armorenchants.get());
@@ -619,50 +627,50 @@ public class ValuableESP extends Module {
 
     private static ArrayList<ItemStack> getArmorItems(LivingEntity livingEntity) {
         ArrayList<ItemStack> armorItems = new ArrayList<>();
-        armorItems.add(livingEntity.getEquippedStack(EquipmentSlot.HEAD));
-        armorItems.add(livingEntity.getEquippedStack(EquipmentSlot.CHEST));
-        armorItems.add(livingEntity.getEquippedStack(EquipmentSlot.LEGS));
-        armorItems.add(livingEntity.getEquippedStack(EquipmentSlot.FEET));
+        armorItems.add(livingEntity.getItemBySlot(EquipmentSlot.HEAD));
+        armorItems.add(livingEntity.getItemBySlot(EquipmentSlot.CHEST));
+        armorItems.add(livingEntity.getItemBySlot(EquipmentSlot.LEGS));
+        armorItems.add(livingEntity.getItemBySlot(EquipmentSlot.FEET));
         return armorItems;
     }
 
     private static ArrayList<ItemStack> getHandItems(LivingEntity livingEntity) {
         ArrayList<ItemStack> handItems = new ArrayList<>();
-        handItems.add(livingEntity.getEquippedStack(EquipmentSlot.MAINHAND));
-        handItems.add(livingEntity.getEquippedStack(EquipmentSlot.OFFHAND));
+        handItems.add(livingEntity.getItemBySlot(EquipmentSlot.MAINHAND));
+        handItems.add(livingEntity.getItemBySlot(EquipmentSlot.OFFHAND));
         return handItems;
     }
 
     public static boolean isTool(ItemStack itemStack) {
-        return itemStack.isIn(ItemTags.AXES)
-            || itemStack.isIn(ItemTags.HOES)
-            || itemStack.isIn(ItemTags.PICKAXES)
-            || itemStack.isIn(ItemTags.SHOVELS)
+        return itemStack.is(ItemTags.AXES)
+            || itemStack.is(ItemTags.HOES)
+            || itemStack.is(ItemTags.PICKAXES)
+            || itemStack.is(ItemTags.SHOVELS)
             || itemStack.getItem() instanceof ShearsItem
             || itemStack.getItem() instanceof FlintAndSteelItem;
     }
 
     public static boolean isArmor(ItemStack itemStack) {
-        return itemStack.isIn(ItemTags.HEAD_ARMOR)
-            || itemStack.isIn(ItemTags.CHEST_ARMOR)
-            || itemStack.isIn(ItemTags.LEG_ARMOR)
-            || itemStack.isIn(ItemTags.FOOT_ARMOR);
+        return itemStack.is(ItemTags.HEAD_ARMOR)
+            || itemStack.is(ItemTags.CHEST_ARMOR)
+            || itemStack.is(ItemTags.LEG_ARMOR)
+            || itemStack.is(ItemTags.FOOT_ARMOR);
     }
 
-    private boolean hasAllRequiredEnchants(ItemStack stack, Set<RegistryKey<Enchantment>> required) {
-        Set<RegistryKey<Enchantment>> present = new HashSet<>();
-        stack.getEnchantments().getEnchantments().forEach(e -> present.add(e.getKey().get()));
-        for (RegistryKey<Enchantment> k : required) if (!present.contains(k)) return false;
+    private boolean hasAllRequiredEnchants(ItemStack stack, Set<ResourceKey<Enchantment>> required) {
+        Set<ResourceKey<Enchantment>> present = new HashSet<>();
+        stack.getEnchantments().keySet().forEach(e -> present.add(e.unwrapKey().get()));
+        for (ResourceKey<Enchantment> k : required) if (!present.contains(k)) return false;
         return true;
     }
 
     // ---------------- Cleanup ----------------
     @EventHandler
     private void onPreTick(TickEvent.Pre event) {
-        if (mc.world == null) return;
+        if (mc.level == null) return;
 
         Set<Entity> current = new HashSet<>();
-        mc.world.getEntities().forEach(current::add);
+        mc.level.entitiesForRendering().forEach(current::add);
 
         scannedItems.removeIf(e -> !current.contains(e));
         scannedMobs.removeIf(e -> !current.contains(e));

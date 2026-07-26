@@ -9,7 +9,7 @@ import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.ChunkDataEvent;
 import meteordevelopment.meteorclient.events.world.PlaySoundEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.mixininterface.IVec3d;
+import meteordevelopment.meteorclient.mixininterface.IVec3;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -20,28 +20,27 @@ import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.MovementType;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.network.packet.s2c.play.CloseScreenS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.HashedStack;
+import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import com.milky.hunt.Addon;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.screen.sync.ItemStackHash;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-
 import java.util.List;
 
 import static com.milky.hunt.Utils.*;
@@ -278,10 +277,10 @@ public class BoostedBounce extends Module {
 
     private boolean elytraToggled = false;
 
-    private Vec3d lastUnstuckPos;
+    private Vec3 lastUnstuckPos;
     private int stuckTimer = 0;
 
-    private Vec3d lastPos;
+    private Vec3 lastPos;
 
     private final double maxDistance = 16 * 5;
     private BlockPos tempPath = null;
@@ -290,16 +289,16 @@ public class BoostedBounce extends Module {
 
     @EventHandler
     private void onReceivePacket(PacketEvent.Receive event) {
-        if (event.packet instanceof PlayerPositionLookS2CPacket) {
+        if (event.packet instanceof ClientboundPlayerPositionPacket) {
             // no-op
-        } else if (event.packet instanceof CloseScreenS2CPacket) {
+        } else if (event.packet instanceof ClientboundContainerClosePacket) {
             event.cancel();
         }
     }
 
     @Override
     public void onActivate() {
-        if (mc.player == null || mc.player.getAbilities().allowFlying) return;
+        if (mc.player == null || mc.player.getAbilities().mayfly) return;
 
         startSprinting = mc.player.isSprinting();
         tempPath = null;
@@ -307,11 +306,11 @@ public class BoostedBounce extends Module {
         paused = false;
         waitingForChunksToLoad = false;
         elytraToggled = false;
-        lastPos = mc.player.getEntityPos();
-        lastUnstuckPos = mc.player.getEntityPos();
+        lastPos = mc.player.position();
+        lastUnstuckPos = mc.player.position();
         stuckTimer = 0;
 
-        if (mc.player.getEntityPos().multiply(1, 0, 1).length() >= 100) {
+        if (mc.player.position().multiply(1, 0, 1).length() >= 100) {
             if (BaritoneAPI.getProvider().getPrimaryBaritone().getElytraProcess().currentDestination() == null) {
                 BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoal(null);
             }
@@ -321,11 +320,11 @@ public class BoostedBounce extends Module {
             }
 
             if (!useCustomYaw.get()) {
-                if (mc.player.getBlockPos().getSquaredDistance(startPos.get()) < 10_000 || !highwayObstaclePasser.get()) {
-                    double playerAngleNormalized = angleOnAxis(mc.player.getYaw());
+                if (mc.player.blockPosition().distSqr(startPos.get()) < 10_000 || !highwayObstaclePasser.get()) {
+                    double playerAngleNormalized = angleOnAxis(mc.player.getYRot());
                     yaw.set(playerAngleNormalized);
                 } else {
-                    BlockPos directionVec = mc.player.getBlockPos().subtract(startPos.get());
+                    BlockPos directionVec = mc.player.blockPosition().subtract(startPos.get());
                     double angle = Math.toDegrees(Math.atan2(-directionVec.getX(), directionVec.getZ()));
                     double angleNormalized = angleOnAxis(angle);
                     if (!awayFromStartPos.get()) angleNormalized += 180;
@@ -337,25 +336,25 @@ public class BoostedBounce extends Module {
 
     @EventHandler
     private void onPlayerMove(PlayerMoveEvent event) {
-        if (mc.player == null || event.type != MovementType.SELF || !enabled() || !MOTION_Y_BOOST) return;
+        if (mc.player == null || event.type != MoverType.SELF || !enabled() || !MOTION_Y_BOOST) return;
 
         if (ONLY_WHILE_COLLIDING && !mc.player.horizontalCollision) return;
 
         if (lastPos != null) {
-            double speedBps = mc.player.getEntityPos().subtract(lastPos).multiply(20, 0, 20).length();
+            double speedBps = mc.player.position().subtract(lastPos).multiply(20, 0, 20).length();
 
             Timer timer = Modules.get().get(Timer.class);
             if (timer.isActive()) speedBps *= timer.getMultiplier();
 
-            if (mc.player.isOnGround() && mc.player.isSprinting() && speedBps < TARGET_SPEED_BPS) {
+            if (mc.player.onGround() && mc.player.isSprinting() && speedBps < TARGET_SPEED_BPS) {
                 if (speedBps > 20 || TUNNEL_BOUNCE) {
-                    ((IVec3d) event.movement).meteor$setY(0.0);
+                    ((IVec3) event.movement).meteor$setY(0.0);
                 }
-                mc.player.setVelocity(mc.player.getVelocity().x, 0.0, mc.player.getVelocity().z);
+                mc.player.setDeltaMovement(mc.player.getDeltaMovement().x, 0.0, mc.player.getDeltaMovement().z);
             }
         }
 
-        lastPos = mc.player.getEntityPos();
+        lastPos = mc.player.position();
     }
 
     @Override
@@ -376,10 +375,10 @@ public class BoostedBounce extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (mc.player == null || mc.player.getAbilities().allowFlying) return;
+        if (mc.player == null || mc.player.getAbilities().mayfly) return;
 
         if (toggleElytra.get() && !FAKE_FLY && !elytraToggled) {
-            if (!(mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem().equals(Items.ELYTRA))) {
+            if (!(mc.player.getItemBySlot(EquipmentSlot.CHEST).getItem().equals(Items.ELYTRA))) {
                 Modules.get().get(ChestSwap.class).swap();
             } else {
                 elytraToggled = true;
@@ -400,7 +399,7 @@ public class BoostedBounce extends Module {
             maintainGoldArmor();
         }
 
-        if (tempPath != null && mc.player.getBlockPos().getSquaredDistance(tempPath) < 500) {
+        if (tempPath != null && mc.player.blockPosition().distSqr(tempPath) < 500) {
             tempPath = null;
             BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoal(null);
         } else if (tempPath != null) {
@@ -412,26 +411,26 @@ public class BoostedBounce extends Module {
             return;
         }
 
-        if (mc.player.squaredDistanceTo(lastUnstuckPos) < 25) stuckTimer++;
+        if (mc.player.distanceToSqr(lastUnstuckPos) < 25) stuckTimer++;
         else {
             stuckTimer = 0;
-            lastUnstuckPos = mc.player.getEntityPos();
+            lastUnstuckPos = mc.player.position();
         }
 
         int ty = getTargetY();
-        if (highwayObstaclePasser.get() && mc.player.getEntityPos().length() > 100 && (
+        if (highwayObstaclePasser.get() && mc.player.position().length() > 100 && (
             mc.player.getY() < ty || mc.player.getY() > ty + 2 ||
                 (mc.player.horizontalCollision && isFrontBlocked(mc.player)) ||
-                (portalTrap != null && portalTrap.getSquaredDistance(mc.player.getBlockPos()) < portalAvoidDistance.get() * portalAvoidDistance.get()) ||
+                (portalTrap != null && portalTrap.distSqr(mc.player.blockPosition()) < portalAvoidDistance.get() * portalAvoidDistance.get()) ||
                 waitingForChunksToLoad || stuckTimer > 50)) {
 
             waitingForChunksToLoad = false;
             paused = true;
-            BlockPos goal = mc.player.getBlockPos();
+            BlockPos goal = mc.player.blockPosition();
             double currDistance = distance.get();
 
             if (portalTrap != null) {
-                currDistance += mc.player.getEntityPos().distanceTo(portalTrap.toCenterPos());
+                currDistance += mc.player.position().distanceTo(portalTrap.getCenter());
                 portalTrap = null;
                 info("Pathing around portal.");
             }
@@ -443,24 +442,24 @@ public class BoostedBounce extends Module {
                     return;
                 }
 
-                Vec3d unitYawVec = yawToDirection(pathYaw());
-                Vec3d travelVec = mc.player.getEntityPos().subtract(startPos.get().toCenterPos());
-                double parallelCurrPosDot = travelVec.multiply(new Vec3d(1, 0, 1)).dotProduct(unitYawVec);
-                Vec3d parallelCurrPosComponent = unitYawVec.multiply(parallelCurrPosDot);
-                Vec3d pos = startPos.get().toCenterPos().add(parallelCurrPosComponent);
+                Vec3 unitYawVec = yawToDirection(pathYaw());
+                Vec3 travelVec = mc.player.position().subtract(startPos.get().getCenter());
+                double parallelCurrPosDot = travelVec.multiply(new Vec3(1, 0, 1)).dot(unitYawVec);
+                Vec3 parallelCurrPosComponent = unitYawVec.scale(parallelCurrPosDot);
+                Vec3 pos = startPos.get().getCenter().add(parallelCurrPosComponent);
                 pos = positionInDirection(pos, pathYaw(), currDistance);
 
                 goal = new BlockPos((int) Math.floor(pos.x), ty, (int) Math.floor(pos.z));
                 currDistance++;
 
-                if (mc.world.getBlockState(goal).getBlock() == Blocks.VOID_AIR) {
+                if (mc.level.getBlockState(goal).getBlock() == Blocks.VOID_AIR) {
                     waitingForChunksToLoad = true;
                     return;
                 }
             }
-            while (!mc.world.getBlockState(goal.down()).isSolidBlock(mc.world, goal.down()) ||
-                mc.world.getBlockState(goal).getBlock() == Blocks.NETHER_PORTAL ||
-                !mc.world.getBlockState(goal).isAir());
+            while (!mc.level.getBlockState(goal.below()).isRedstoneConductor(mc.level, goal.below()) ||
+                mc.level.getBlockState(goal).getBlock() == Blocks.NETHER_PORTAL ||
+                !mc.level.getBlockState(goal).isAir());
 
             BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(goal));
         } else {
@@ -468,8 +467,8 @@ public class BoostedBounce extends Module {
             if (!enabled()) return;
 
             if (!FAKE_FLY) {
-                if (mc.player.isOnGround() && (!MOTION_Y_BOOST || Utils.getPlayerSpeed().multiply(1, 0, 1).length() < TARGET_SPEED_BPS)) {
-                    mc.player.jump();
+                if (mc.player.onGround() && (!MOTION_Y_BOOST || Utils.getPlayerSpeed().multiply(1, 0, 1).length() < TARGET_SPEED_BPS)) {
+                    mc.player.jumpFromGround();
                 }
             }
 
@@ -485,7 +484,7 @@ public class BoostedBounce extends Module {
     }
 
     public boolean enabled() {
-        return this.isActive() && !paused && mc.player != null && (FAKE_FLY || mc.player.getEquippedStack(EquipmentSlot.CHEST).getItem().equals(Items.ELYTRA));
+        return this.isActive() && !paused && mc.player != null && (FAKE_FLY || mc.player.getItemBySlot(EquipmentSlot.CHEST).getItem().equals(Items.ELYTRA));
     }
 
     private void doGrimEflyStuff() {
@@ -495,8 +494,8 @@ public class BoostedBounce extends Module {
         swapToItem(itemResult.slot());
         sendStartFlyingPacket();
 
-        if (mc.player.isOnGround() && (!MOTION_Y_BOOST || Utils.getPlayerSpeed().multiply(1, 0, 1).length() < TARGET_SPEED_BPS)) {
-            mc.player.jump();
+        if (mc.player.onGround() && (!MOTION_Y_BOOST || Utils.getPlayerSpeed().multiply(1, 0, 1).length() < TARGET_SPEED_BPS)) {
+            mc.player.jumpFromGround();
         }
 
         swapToItem(itemResult.slot());
@@ -505,18 +504,18 @@ public class BoostedBounce extends Module {
     @EventHandler
     private void onPlaySound(PlaySoundEvent event) {
         List<Identifier> armorEquipSounds = List.of(
-            Identifier.of("minecraft:item.armor.equip_generic"),
-            Identifier.of("minecraft:item.armor.equip_netherite"),
-            Identifier.of("minecraft:item.armor.equip_elytra"),
-            Identifier.of("minecraft:item.armor.equip_diamond"),
-            Identifier.of("minecraft:item.armor.equip_gold"),
-            Identifier.of("minecraft:item.armor.equip_iron"),
-            Identifier.of("minecraft:item.armor.equip_chain"),
-            Identifier.of("minecraft:item.armor.equip_leather"),
-            Identifier.of("minecraft:item.elytra.flying")
+            Identifier.parse("minecraft:item.armor.equip_generic"),
+            Identifier.parse("minecraft:item.armor.equip_netherite"),
+            Identifier.parse("minecraft:item.armor.equip_elytra"),
+            Identifier.parse("minecraft:item.armor.equip_diamond"),
+            Identifier.parse("minecraft:item.armor.equip_gold"),
+            Identifier.parse("minecraft:item.armor.equip_iron"),
+            Identifier.parse("minecraft:item.armor.equip_chain"),
+            Identifier.parse("minecraft:item.armor.equip_leather"),
+            Identifier.parse("minecraft:item.elytra.flying")
         );
         for (Identifier identifier : armorEquipSounds) {
-            if (identifier.equals(event.sound.getId())) {
+            if (identifier.equals(event.sound.getIdentifier())) {
                 event.cancel();
                 break;
             }
@@ -525,36 +524,36 @@ public class BoostedBounce extends Module {
 
     // hotbar<->chest swap for FakeFly (preserved; FAKE_FLY is hard-disabled above)
     private void swapToItem(int slot) {
-        ItemStack chestItem = mc.player.getInventory().getStack(38);
-        ItemStack hotbarSwapItem = mc.player.getInventory().getStack(slot);
+        ItemStack chestItem = mc.player.getInventory().getItem(38);
+        ItemStack hotbarSwapItem = mc.player.getInventory().getItem(slot);
 
-        Int2ObjectMap<ItemStackHash> changedSlots = new Int2ObjectOpenHashMap<>();
-        changedSlots.put(6, ItemStackHash.fromItemStack(hotbarSwapItem, mc.getNetworkHandler().getComponentHasher()));
-        changedSlots.put(slot + 36, ItemStackHash.fromItemStack(chestItem, mc.getNetworkHandler().getComponentHasher()));
+        Int2ObjectMap<HashedStack> changedSlots = new Int2ObjectOpenHashMap<>();
+        changedSlots.put(6, HashedStack.create(hotbarSwapItem, mc.getConnection().decoratedHashOpsGenenerator()));
+        changedSlots.put(slot + 36, HashedStack.create(chestItem, mc.getConnection().decoratedHashOpsGenenerator()));
 
         sendSwapPacket(changedSlots, (byte) slot);
     }
 
     private void sendStartFlyingPacket() {
         if (mc.player == null) return;
-        mc.player.networkHandler.sendPacket(new ClientCommandC2SPacket(
+        mc.player.connection.send(new ServerboundPlayerCommandPacket(
             mc.player,
-            ClientCommandC2SPacket.Mode.START_FALL_FLYING
+            ServerboundPlayerCommandPacket.Action.START_FALL_FLYING
         ));
     }
 
-    private void sendSwapPacket(Int2ObjectMap<ItemStackHash> changedSlots, byte buttonNum) {
-        int syncId = mc.player.currentScreenHandler.syncId;
-        int stateId = mc.player.currentScreenHandler.getRevision();
+    private void sendSwapPacket(Int2ObjectMap<HashedStack> changedSlots, byte buttonNum) {
+        int syncId = mc.player.containerMenu.containerId;
+        int stateId = mc.player.containerMenu.getStateId();
 
-        mc.player.networkHandler.sendPacket(new ClickSlotC2SPacket(
+        mc.player.connection.send(new ServerboundContainerClickPacket(
             syncId,
             stateId,
             (short)6,
             buttonNum,
-            SlotActionType.SWAP,
+            ContainerInput.SWAP,
             changedSlots,
-            ItemStackHash.EMPTY
+            HashedStack.EMPTY
         ));
     }
 
@@ -564,29 +563,29 @@ public class BoostedBounce extends Module {
         ChunkPos pos = event.chunk().getPos();
 
         int ty = getTargetY();
-        BlockPos centerPos = pos.getCenterAtY(ty);
+        BlockPos centerPos = pos.getMiddleBlockPosition(ty);
 
-        Vec3d moveDir = yawToDirection(pathYaw());
-        double distanceToHighway = distancePointToDirection(Vec3d.of(centerPos), moveDir, mc.player.getEntityPos());
+        Vec3 moveDir = yawToDirection(pathYaw());
+        double distanceToHighway = distancePointToDirection(Vec3.atLowerCornerOf(centerPos), moveDir, mc.player.position());
         if (distanceToHighway > 21) return;
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = ty; y < ty + 3; y++) {
-                    BlockPos position = new BlockPos(pos.x * 16 + x, y, pos.z * 16 + z);
-                    if (distancePointToDirection(Vec3d.of(position), moveDir, mc.player.getEntityPos()) > portalScanWidth.get()) continue;
+                    BlockPos position = new BlockPos(pos.x() * 16 + x, y, pos.z() * 16 + z);
+                    if (distancePointToDirection(Vec3.atLowerCornerOf(position), moveDir, mc.player.position()) > portalScanWidth.get()) continue;
 
-                    if (mc.world.getBlockState(position).getBlock().equals(Blocks.NETHER_PORTAL)) {
+                    if (mc.level.getBlockState(position).getBlock().equals(Blocks.NETHER_PORTAL)) {
                         BlockPos posBehind = new BlockPos(
                             (int) Math.floor(position.getX() + moveDir.x),
                             position.getY(),
                             (int) Math.floor(position.getZ() + moveDir.z)
                         );
-                        if (mc.world.getBlockState(posBehind).isSolidBlock(mc.world, posBehind) ||
-                            mc.world.getBlockState(posBehind).getBlock() == Blocks.NETHER_PORTAL) {
+                        if (mc.level.getBlockState(posBehind).isRedstoneConductor(mc.level, posBehind) ||
+                            mc.level.getBlockState(posBehind).getBlock() == Blocks.NETHER_PORTAL) {
                             if (portalTrap == null ||
-                                (portalTrap.getSquaredDistance(posBehind) > 100 &&
-                                    mc.player.getBlockPos().getSquaredDistance(posBehind) < mc.player.getBlockPos().getSquaredDistance(portalTrap))) {
+                                (portalTrap.distSqr(posBehind) > 100 &&
+                                    mc.player.blockPosition().distSqr(posBehind) < mc.player.blockPosition().distSqr(portalTrap))) {
                                 portalTrap = posBehind;
                             }
                         }
@@ -596,25 +595,25 @@ public class BoostedBounce extends Module {
         }
     }
 
-    private static boolean isFrontBlocked(net.minecraft.entity.player.PlayerEntity p) {
+    private static boolean isFrontBlocked(net.minecraft.world.entity.player.Player p) {
         if (p == null || p.isRemoved()) return false;
-        World w = p.getEntityWorld();
-        Box bb = p.getBoundingBox();
-        Direction facing = p.getHorizontalFacing();
-        Vec3d fwd = new Vec3d(facing.getOffsetX(), 0, facing.getOffsetZ());
+        Level w = p.level();
+        AABB bb = p.getBoundingBox();
+        Direction facing = p.getDirection();
+        Vec3 fwd = new Vec3(facing.getStepX(), 0, facing.getStepZ());
         double probe = 0.62;
         double[] ys = new double[]{bb.minY + 0.2, (bb.minY + bb.maxY) * 0.5, bb.maxY - 0.1};
         for (double y : ys) {
-            BlockPos pos = BlockPos.ofFloored(p.getX() + fwd.x * probe, y, p.getZ() + fwd.z * probe);
+            BlockPos pos = BlockPos.containing(p.getX() + fwd.x * probe, y, p.getZ() + fwd.z * probe);
             if (isHard(w.getBlockState(pos), w, pos)) return true;
         }
         return false;
     }
 
-    private static boolean isHard(BlockState s, World w, BlockPos pos) {
+    private static boolean isHard(BlockState s, Level w, BlockPos pos) {
         if (s.isAir()) return false;
-        if (s.isOf(Blocks.NETHER_PORTAL)) return true;
-        return s.isFullCube(w, pos) && s.isSolidBlock(w, pos);
+        if (s.is(Blocks.NETHER_PORTAL)) return true;
+        return s.isCollisionShapeFullBlock(w, pos) && s.isRedstoneConductor(w, pos);
     }
 
     private static double roundAngle(double angleDeg) {
@@ -632,18 +631,18 @@ public class BoostedBounce extends Module {
     }
 
     private boolean isHealthyElytra(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.ELYTRA)) return false;
-        int remaining = stack.getMaxDamage() - stack.getDamage();
+        if (stack == null || stack.isEmpty() || !stack.is(Items.ELYTRA)) return false;
+        int remaining = stack.getMaxDamage() - stack.getDamageValue();
         return remaining >= minElytraDurability.get();
     }
 
     private int findBestElytraSlot() {
         int bestSlot = -1;
         int bestRemain = -1;
-        for (int i = 0; i < mc.player.getInventory().size(); i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
-            if (s.isOf(Items.ELYTRA)) {
-                int remain = s.getMaxDamage() - s.getDamage();
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack s = mc.player.getInventory().getItem(i);
+            if (s.is(Items.ELYTRA)) {
+                int remain = s.getMaxDamage() - s.getDamageValue();
                 if (remain >= minElytraDurability.get() && remain > bestRemain) {
                     bestRemain = remain;
                     bestSlot = i;
@@ -654,7 +653,7 @@ public class BoostedBounce extends Module {
     }
 
     private void maybeReplaceElytra() {
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return;
         int slot = findBestElytraSlot();
         if (slot == -1) return;
@@ -676,9 +675,9 @@ public class BoostedBounce extends Module {
             if (armorIdx == -1) continue;
 
             int invArmorSlot = (armorIdx == 3 ? 39 : armorIdx == 2 ? 38 : armorIdx == 1 ? 37 : 36);
-            ItemStack equipped = mc.player.getInventory().getStack(invArmorSlot);
+            ItemStack equipped = mc.player.getInventory().getItem(invArmorSlot);
 
-            boolean ok = equipped != null && !equipped.isEmpty() && equipped.isOf(it)
+            boolean ok = equipped != null && !equipped.isEmpty() && equipped.is(it)
                 && remainingDurability(equipped) >= minGoldDurability.get();
             if (ok) continue;
 
@@ -698,9 +697,9 @@ public class BoostedBounce extends Module {
 
     private int findBestGoldSlot(Item it) {
         int best = -1, bestRemain = -1;
-        for (int i = 0; i < mc.player.getInventory().size(); i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
-            if (s.isOf(it)) {
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack s = mc.player.getInventory().getItem(i);
+            if (s.is(it)) {
                 int r = remainingDurability(s);
                 if (r >= minGoldDurability.get() && r > bestRemain) {
                     bestRemain = r;
@@ -712,7 +711,7 @@ public class BoostedBounce extends Module {
     }
 
     private int remainingDurability(ItemStack s) {
-        return s.getMaxDamage() - s.getDamage();
+        return s.getMaxDamage() - s.getDamageValue();
     }
 
     private void maybeSwapBackChestplate() {
@@ -722,8 +721,8 @@ public class BoostedBounce extends Module {
 
     private int findBestChestplateSlot() {
         int best = -1, bestTier = -1, bestRemain = -1;
-        for (int i = 0; i < mc.player.getInventory().size(); i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack s = mc.player.getInventory().getItem(i);
             if (s.isEmpty()) continue;
             int tier = chestplateTier(s.getItem());
             if (tier < 0) continue;
@@ -748,8 +747,8 @@ public class BoostedBounce extends Module {
     }
 
     private void maybeSwapBackLeggings() {
-        ItemStack legs = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 1);
-        boolean wearingGoldOrEmpty = legs == null || legs.isEmpty() || legs.isOf(Items.GOLDEN_LEGGINGS);
+        ItemStack legs = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 1);
+        boolean wearingGoldOrEmpty = legs == null || legs.isEmpty() || legs.is(Items.GOLDEN_LEGGINGS);
         if (!wearingGoldOrEmpty) return;
         int best = findBestNonGoldLeggingsSlot();
         if (best != -1) InvUtils.move().from(best).toArmor(1);
@@ -765,12 +764,12 @@ public class BoostedBounce extends Module {
         };
         for (Item[] tier : tiers) {
             int best = -1, bestRemain = -1;
-            for (int i = 0; i < mc.player.getInventory().size(); i++) {
-                ItemStack s = mc.player.getInventory().getStack(i);
+            for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+                ItemStack s = mc.player.getInventory().getItem(i);
                 if (s.isEmpty()) continue;
-                if (s.isOf(Items.GOLDEN_LEGGINGS)) continue;
+                if (s.is(Items.GOLDEN_LEGGINGS)) continue;
                 for (Item it : tier) {
-                    if (s.isOf(it)) {
+                    if (s.is(it)) {
                         int r = remainingDurability(s);
                         if (r > bestRemain) {
                             bestRemain = r;

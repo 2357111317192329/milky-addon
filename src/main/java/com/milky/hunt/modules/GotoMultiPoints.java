@@ -5,7 +5,7 @@ import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 import baritone.api.BaritoneAPI;
 import baritone.api.pathing.goals.GoalBlock;
 
@@ -129,7 +129,7 @@ public class GotoMultiPoints extends Module {
 
         BlockPos target = points.get(currentIndex);
 
-        if (mc.player.getBlockPos().isWithinDistance(target, reachDistance.get())) {
+        if (mc.player.blockPosition().closerThan(target, reachDistance.get())) {
             if (!waiting) {
                 waiting = true;
                 lastArriveTime = System.currentTimeMillis();

@@ -8,13 +8,12 @@ import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.util.Hand;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Objects;
@@ -174,7 +173,7 @@ public class PullUp extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre e) {
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         ticksInPhase++;
         if (verticalCd > 0) verticalCd--;
@@ -205,7 +204,7 @@ public class PullUp extends Module {
                 ensureRocketInMainHand();
                 equipElytraIfNeeded();
 
-                if (near(mc.player.getPitch(), stage12Pitch.get(), 1.0)) {
+                if (near(mc.player.getXRot(), stage12Pitch.get(), 1.0)) {
                     phase = preSpamTicks.get() > 0 ? Phase.PRE_SPAM : Phase.JUMP;
                     ticksInPhase = 0;
                 }
@@ -219,7 +218,7 @@ public class PullUp extends Module {
             }
 
             case JUMP -> {
-                if (mc.player.isOnGround()) mc.player.jump();
+                if (mc.player.onGround()) mc.player.jumpFromGround();
                 verticalCd = 0;
                 reacquireCd = 0;
                 gliding = glidingPrev = false;
@@ -236,8 +235,8 @@ public class PullUp extends Module {
                 ensureRocketInMainHand();
                 equipElytraIfNeeded();         // auto-swap in flight if below threshold
 
-                boolean airborne = !mc.player.isOnGround();
-                double vy = mc.player.getVelocity().y;
+                boolean airborne = !mc.player.onGround();
+                double vy = mc.player.getDeltaMovement().y;
                 boolean falling = vy < -0.02;
 
                 // accumulate airborne ticks for watchdog
@@ -288,8 +287,8 @@ public class PullUp extends Module {
                     break;
                 }
 
-                boolean airborne = !mc.player.isOnGround();
-                double vy = mc.player.getVelocity().y;
+                boolean airborne = !mc.player.onGround();
+                double vy = mc.player.getDeltaMovement().y;
 
                 if (airborne && !gliding && vy < -0.02 && reacquireCd == 0) {
                     sendStartFallFlying();
@@ -317,17 +316,17 @@ public class PullUp extends Module {
 
     // Durability helpers
     private int remainingDurability(ItemStack s) {
-        if (s == null || s.isEmpty() || !s.isOf(Items.ELYTRA)) return -1;
-        return s.getMaxDamage() - s.getDamage();
+        if (s == null || s.isEmpty() || !s.is(Items.ELYTRA)) return -1;
+        return s.getMaxDamage() - s.getDamageValue();
     }
 
     private int findBestElytraSlotAbove(int minRemain) {
         var inv = mc.player.getInventory();
-        int size = inv.size(); // main inventory + hotbar
+        int size = inv.getContainerSize(); // main inventory + hotbar
         int best = -1, bestRem = -1;
         for (int i = 0; i < size; i++) {
-            ItemStack st = inv.getStack(i);
-            if (st.isOf(Items.ELYTRA)) {
+            ItemStack st = inv.getItem(i);
+            if (st.is(Items.ELYTRA)) {
                 int rem = remainingDurability(st);
                 if (rem >= minRemain && rem > bestRem) {
                     best = i; bestRem = rem;
@@ -339,7 +338,7 @@ public class PullUp extends Module {
 
     private boolean hasElytraMeetingThreshold() {
         int min = minElytraDurability.get();
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
         if (remainingDurability(chest) >= min) return true;
         return findBestElytraSlotAbove(min) != -1;
     }
@@ -347,7 +346,7 @@ public class PullUp extends Module {
     // Durability-aware equip (replaces old logic)
     private void equipElytraIfNeeded() {
         int min = minElytraDurability.get();
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
 
         // If already wearing a good one, keep it
         if (remainingDurability(chest) >= min) return;
@@ -359,7 +358,7 @@ public class PullUp extends Module {
 
     private void ensureRocketInMainHand() {
         if (!keepMainhandRocket.get()) return;
-        if (mc.player.getMainHandStack().isOf(Items.FIREWORK_ROCKET)) return;
+        if (mc.player.getMainHandItem().is(Items.FIREWORK_ROCKET)) return;
 
         FindItemResult hotbar = InvUtils.findInHotbar(Items.FIREWORK_ROCKET);
         if (hotbar.found()) {
@@ -374,7 +373,7 @@ public class PullUp extends Module {
     }
 
     private void facePitch(double wantedPitch) {
-        float current = mc.player.getPitch();
+        float current = mc.player.getXRot();
         float next;
         if (!smoothRotate.get()) {
             next = (float) wantedPitch;
@@ -383,32 +382,32 @@ public class PullUp extends Module {
             next = (float) (Math.abs(wantedPitch - current) <= step ? wantedPitch
                 : current + Math.copySign(step, wantedPitch - current));
         }
-        mc.player.setPitch(next); // client-side only
+        mc.player.setXRot(next); // client-side only
     }
 
     private void fireIfReady() {
-        ItemStack stack = mc.player.getMainHandStack();
-        if (!stack.isOf(Items.FIREWORK_ROCKET)) return;
+        ItemStack stack = mc.player.getMainHandItem();
+        if (!stack.is(Items.FIREWORK_ROCKET)) return;
 
         if (nukeRightClickDelay.get()) {
             try {
-                Field f = MinecraftClient.class.getDeclaredField("itemUseCooldown");
+                Field f = Minecraft.class.getDeclaredField("itemUseCooldown");
                 f.setAccessible(true);
                 f.setInt(mc, 0);
             } catch (Throwable ignored) {}
         }
 
-        mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+        mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
     }
 
     private void sendStartFallFlying() {
-        mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+        mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
     }
 
     private static boolean near(double a, double b, double eps) { return Math.abs(a - b) <= eps; }
 
     // Version-agnostic gliding check
-    private boolean isPlayerGliding(ClientPlayerEntity p) {
+    private boolean isPlayerGliding(LocalPlayer p) {
         try {
             Method m = p.getClass().getMethod("isGliding");
             Object r = m.invoke(p);
@@ -468,7 +467,7 @@ public class PullUp extends Module {
         // Failure patterns:
         // 1) landed back on ground after a small hop (common)
         // 2) timeout without "real lift"
-        boolean landedBack = mc.player.isOnGround();
+        boolean landedBack = mc.player.onGround();
         boolean timeout = ticksInPhase >= takeoffTimeoutTicks.get();
 
         // If we already landed back and still not successful, it's pretty safe to retry earlier.

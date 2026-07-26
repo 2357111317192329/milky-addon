@@ -12,10 +12,10 @@ import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
-import net.minecraft.util.Hand;
+import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import static com.milky.hunt.Utils.firework;
 
@@ -153,7 +153,7 @@ public class Cruise extends Module {
 
         if (mode.get() == Mode.Powered) {
             if (mc.player == null) return;
-            if (!mc.player.isGliding()) {
+            if (!mc.player.isFallFlying()) {
                 info("You must be flying before enabling Cruise (Powered).");
             }
         } else {
@@ -199,7 +199,7 @@ public class Cruise extends Module {
     private void tickPowered() {
         double currentY = mc.player.getY();
 
-        if (mc.player.isGliding()) {
+        if (mc.player.isFallFlying()) {
             if (powered_yTarget == -1 || !powered_launched) {
                 powered_yTarget = useManualY.get() ? manualYLevel.get() : currentY;
                 powered_launched = true;
@@ -225,9 +225,9 @@ public class Cruise extends Module {
                 powered_targetPitch = 0f;
             }
 
-            float currentPitch = mc.player.getPitch();
+            float currentPitch = mc.player.getXRot();
             float pitchDiff = powered_targetPitch - currentPitch;
-            mc.player.setPitch(currentPitch + pitchDiff * 0.1f);
+            mc.player.setXRot(currentPitch + pitchDiff * 0.1f);
 
             if (System.currentTimeMillis() - powered_lastRocketUse > fireworkDelayMs.get()) {
                 powered_tryUseFirework();
@@ -239,7 +239,7 @@ public class Cruise extends Module {
             }
 
             if (!powered_launched) {
-                mc.player.jump();
+                mc.player.jumpFromGround();
                 powered_launched = true;
             } else if (System.currentTimeMillis() - powered_lastRocketUse > 1000) {
                 powered_tryUseFirework();
@@ -271,7 +271,7 @@ public class Cruise extends Module {
 
     private int findEmptyHotbarSlot() {
         for (int i = 0; i < 9; i++) {
-            if (mc.player.getInventory().getStack(i).isEmpty()) return i;
+            if (mc.player.getInventory().getItem(i).isEmpty()) return i;
         }
         return -1;
     }
@@ -282,7 +282,7 @@ public class Cruise extends Module {
 
             if (unpowered_elytraSwapSlot != -1) {
                 InvUtils.swap(unpowered_elytraSwapSlot, true);
-                mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+                mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
                 InvUtils.swapBack();
                 unpowered_elytraSwapSlot = -1;
             }
@@ -292,11 +292,11 @@ public class Cruise extends Module {
                 return;
             }
 
-            if (Math.abs(mc.player.getPitch() + 40f) <= 0.2f) {
+            if (Math.abs(mc.player.getXRot() + 40f) <= 0.2f) {
                 unpowered_goingUp = true;
 
                 if (autoFirework.get()
-                    && mc.player.getVelocity().y < velocityThreshold.get()
+                    && mc.player.getDeltaMovement().y < velocityThreshold.get()
                     && mc.player.getY() < getUpperBounds()) {
 
                     if (unpowered_fireworkCooldown == 0) {
@@ -309,12 +309,12 @@ public class Cruise extends Module {
                     }
                 }
             }
-            else if (autoBoundAdjust.get() && unpowered_goingUp && mc.player.getVelocity().y <= 0) {
+            else if (autoBoundAdjust.get() && unpowered_goingUp && mc.player.getDeltaMovement().y <= 0) {
                 unpowered_goingUp = false;
                 resetBoundsToCurrent();
             }
         } else {
-            if (!mc.player.getAbilities().allowFlying) {
+            if (!mc.player.getAbilities().mayfly) {
                 if (!hasEligibleElytraAvailable()) return;
 
                 if (elytraFly != null) {
@@ -348,14 +348,14 @@ public class Cruise extends Module {
     }
 
     private boolean hasEligibleElytraAvailable() {
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return true;
         return findBestElytraSlot() != -1;
     }
 
     private boolean isHealthyElytra(ItemStack stack) {
-        if (stack == null || stack.isEmpty() || !stack.isOf(Items.ELYTRA)) return false;
-        int remaining = stack.getMaxDamage() - stack.getDamage();
+        if (stack == null || stack.isEmpty() || !stack.is(Items.ELYTRA)) return false;
+        int remaining = stack.getMaxDamage() - stack.getDamageValue();
         return remaining >= minElytraDurability.get();
     }
 
@@ -363,10 +363,10 @@ public class Cruise extends Module {
         int bestSlot = -1;
         int bestRemain = -1;
 
-        for (int i = 0; i < mc.player.getInventory().size(); i++) {
-            ItemStack s = mc.player.getInventory().getStack(i);
-            if (s.isOf(Items.ELYTRA)) {
-                int remain = s.getMaxDamage() - s.getDamage();
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack s = mc.player.getInventory().getItem(i);
+            if (s.is(Items.ELYTRA)) {
+                int remain = s.getMaxDamage() - s.getDamageValue();
                 if (remain >= minElytraDurability.get() && remain > bestRemain) {
                     bestRemain = remain;
                     bestSlot = i;
@@ -377,7 +377,7 @@ public class Cruise extends Module {
     }
 
     private void maybeReplaceElytra() {
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
         if (isHealthyElytra(chest)) return;
 
         int slot = findBestElytraSlot();
@@ -390,8 +390,8 @@ public class Cruise extends Module {
 
     private void tryStartFallFlying() {
         if (mc.player == null) return;
-        if (mc.getNetworkHandler() != null) {
-            mc.getNetworkHandler().sendPacket(new ClientCommandC2SPacket(mc.player, ClientCommandC2SPacket.Mode.START_FALL_FLYING));
+        if (mc.getConnection() != null) {
+            mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
         }
     }
 

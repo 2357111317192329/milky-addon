@@ -10,7 +10,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.Util;
 
 import javax.sound.sampled.*;
@@ -112,7 +112,7 @@ public class WavPlayer extends Module {
             ensureFolderExistsAndEnsureDefaultWav();
 
             try {
-                Util.getOperatingSystem().open(getSoundDir().toFile());
+                Util.getPlatform().openFile(getSoundDir().toFile());
             } catch (Exception ignored) {}
         };
 
@@ -209,7 +209,7 @@ public class WavPlayer extends Module {
 
         Path base = null;
         try {
-            File runDir = MinecraftClient.getInstance().runDirectory;
+            File runDir = Minecraft.getInstance().gameDirectory;
             if (runDir != null) base = runDir.toPath();
         } catch (Throwable ignored) {}
 

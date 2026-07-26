@@ -10,27 +10,27 @@ import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
-import net.minecraft.block.EnderChestBlock;
-import net.minecraft.block.ShulkerBoxBlock;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.ShulkerBoxScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ShulkerBoxMenu;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.EnderChestBlock;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 public class PitStop extends Module {
     private final SettingGroup sg = settings.getDefaultGroup();
@@ -163,7 +163,7 @@ public class PitStop extends Module {
 
     // 2x2 platform / home
     private BlockPos homeFeet = null;             // air block the player stands in
-    private Vec3d homeCenter = null;             // center of homeFeet (x+0.5, z+0.5)
+    private Vec3 homeCenter = null;             // center of homeFeet (x+0.5, z+0.5)
     private BlockPos[] platform = null;          // 4 air blocks at y = homeFeet.y (placement plane), size 4
     private Stage afterHome = Stage.DONE;
 
@@ -255,7 +255,7 @@ public class PitStop extends Module {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onTick(TickEvent.Pre e) {
-        if (!isActive() || mc.player == null || mc.world == null) return;
+        if (!isActive() || mc.player == null || mc.level == null) return;
 
         if (wait > 0) { wait--; return; }
 
@@ -314,8 +314,8 @@ public class PitStop extends Module {
         }
 
         // If wearing Elytra, move it to hotbar/inventory first so swap logic can see it.
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + ARMOR_CHEST_INDEX);
-        if (chest != null && !chest.isEmpty() && chest.isOf(Items.ELYTRA)) {
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + ARMOR_CHEST_INDEX);
+        if (chest != null && !chest.isEmpty() && chest.is(Items.ELYTRA)) {
             if (unequipAttempts >= UNEQUIP_MAX_ATTEMPTS) {
                 error("PitStop: failed to unequip Elytra (no space / lag / rollback?).");
                 stage = Stage.FAIL;
@@ -343,7 +343,7 @@ public class PitStop extends Module {
     private int findEmptyHotbarSlot() {
         if (mc.player == null) return -1;
         for (int i = 0; i < 9; i++) {
-            if (mc.player.getInventory().getStack(i).isEmpty()) return i;
+            if (mc.player.getInventory().getItem(i).isEmpty()) return i;
         }
         return -1;
     }
@@ -355,8 +355,8 @@ public class PitStop extends Module {
     private void analyze() {
         // Establish home and platform once.
         if (homeFeet == null) {
-            homeFeet = mc.player.getBlockPos();
-            homeCenter = Vec3d.ofCenter(homeFeet);
+            homeFeet = mc.player.blockPosition();
+            homeCenter = Vec3.atCenterOf(homeFeet);
             platform = detect2x2Platform(homeFeet);
             if (platform == null) {
                 error("PitStop: cannot detect 2x2 platform under/around you. Stand on the 2x2 floor first.");
@@ -411,7 +411,7 @@ public class PitStop extends Module {
             return;
         }
 
-        if (!mc.world.isAir(ecPlace)) {
+        if (!mc.level.isEmptyBlock(ecPlace)) {
             error("PitStop: platform cell for Ender Chest is not empty.");
             stage = Stage.FAIL;
             return;
@@ -452,11 +452,11 @@ public class PitStop extends Module {
     }
 
     private void openBlockAt(BlockPos pos, Stage nextIfOpened, Stage fallbackIfMissing) {
-        if (pos == null || mc.world.isAir(pos)) { stage = fallbackIfMissing; return; }
+        if (pos == null || mc.level.isEmptyBlock(pos)) { stage = fallbackIfMissing; return; }
         lookAt(pos);
-        BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
-        mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, hit);
-        mc.player.swingHand(Hand.MAIN_HAND);
+        BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
+        mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+        mc.player.swing(InteractionHand.MAIN_HAND);
         wait = delayTicks.get();
         stage = nextIfOpened;
     }
@@ -468,7 +468,7 @@ public class PitStop extends Module {
             return;
         }
 
-        if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler gh)) {
+        if (!(mc.player.containerMenu instanceof ChestMenu gh)) {
             stage = Stage.OPEN_EC;
             return;
         }
@@ -501,19 +501,19 @@ public class PitStop extends Module {
         closeContainerThen(Stage.PLACE_SHULKER);
     }
 
-    private int findNextUntriedNamedShulkerSlot(GenericContainerScreenHandler gh) {
+    private int findNextUntriedNamedShulkerSlot(ChestMenu gh) {
         boolean[] tried = triedShulkerSlots[flow.ordinal()];
         for (int i = 0; i < 27; i++) {
             if (tried[i]) continue;
-            ItemStack s = gh.getSlot(i).getStack();
+            ItemStack s = gh.getSlot(i).getItem();
             if (isNamedShulker(s)) return i;
         }
         return -1;
     }
 
-    private boolean hasAnyNamedShulker(GenericContainerScreenHandler gh) {
+    private boolean hasAnyNamedShulker(ChestMenu gh) {
         for (int i = 0; i < 27; i++) {
-            ItemStack s = gh.getSlot(i).getStack();
+            ItemStack s = gh.getSlot(i).getItem();
             if (isNamedShulker(s)) return true;
         }
         return false;
@@ -543,7 +543,7 @@ public class PitStop extends Module {
             return;
         }
 
-        if (!mc.world.isAir(shulkerPlace)) {
+        if (!mc.level.isEmptyBlock(shulkerPlace)) {
             error("PitStop: platform cell for shulker is not empty.");
             stage = Stage.FAIL;
             return;
@@ -577,7 +577,7 @@ public class PitStop extends Module {
     }
 
     private void swapInKit() {
-        if (!(mc.player.currentScreenHandler instanceof ShulkerBoxScreenHandler sh)) {
+        if (!(mc.player.containerMenu instanceof ShulkerBoxMenu sh)) {
             stage = Stage.OPEN_SHULKER;
             return;
         }
@@ -590,15 +590,15 @@ public class PitStop extends Module {
         }
 
         for (int ci = 0; ci < 27; ci++) {
-            ItemStack kitStack = sh.getSlot(ci).getStack();
+            ItemStack kitStack = sh.getSlot(ci).getItem();
             if (!(isElytra(kitStack) && !isBad(kitStack))) continue;
 
             int pv = findDamagedSlotInContainerView(sh);
             if (pv == -1) break;
 
-            clickContainerSlot(sh, pv, SlotActionType.PICKUP);
-            clickContainerSlot(sh, ci, SlotActionType.PICKUP);
-            clickContainerSlot(sh, pv, SlotActionType.PICKUP);
+            clickContainerSlot(sh, pv, ContainerInput.PICKUP);
+            clickContainerSlot(sh, ci, ContainerInput.PICKUP);
+            clickContainerSlot(sh, pv, ContainerInput.PICKUP);
         }
 
         stage = Stage.CLOSE_SHULKER;
@@ -606,7 +606,7 @@ public class PitStop extends Module {
     }
 
     private void restockInKit(Item want, int target) {
-        if (!(mc.player.currentScreenHandler instanceof ShulkerBoxScreenHandler sh)) {
+        if (!(mc.player.containerMenu instanceof ShulkerBoxMenu sh)) {
             stage = Stage.OPEN_SHULKER;
             return;
         }
@@ -620,9 +620,9 @@ public class PitStop extends Module {
 
         int have = countItemInInventory(want);
         for (int ci = 0; ci < 27 && have < target; ci++) {
-            ItemStack s = sh.getSlot(ci).getStack();
+            ItemStack s = sh.getSlot(ci).getItem();
             if (!s.isEmpty() && s.getItem() == want) {
-                mc.interactionManager.clickSlot(sh.syncId, ci, 0, SlotActionType.QUICK_MOVE, mc.player);
+                mc.gameMode.handleContainerInput(sh.containerId, ci, 0, ContainerInput.QUICK_MOVE, mc.player);
                 wait = 1;
                 have = countItemInInventory(want);
             }
@@ -633,7 +633,7 @@ public class PitStop extends Module {
     }
 
     private void closeContainerThen(Stage next) {
-        if (mc.currentScreen instanceof HandledScreen<?>) mc.player.closeHandledScreen();
+        if (mc.screen instanceof AbstractContainerScreen<?>) mc.player.closeContainer();
 
         if (next == Stage.MINING) {
             wait = Math.max(wait, delayTicks.get());
@@ -673,7 +673,7 @@ public class PitStop extends Module {
     private void continueMining() {
         if (miningPos == null) { stage = Stage.FAIL; return; }
 
-        if (mc.world.isAir(miningPos)) {
+        if (mc.level.isEmptyBlock(miningPos)) {
             miningActive = false;
             beginMineVerify();
             return;
@@ -682,23 +682,23 @@ public class PitStop extends Module {
         Direction dir = BlockUtils.getDirection(miningPos);
 
         if (!miningActive) {
-            miningPick = InvUtils.find(stack -> stack.isOf(Items.NETHERITE_PICKAXE) || stack.isOf(Items.DIAMOND_PICKAXE));
+            miningPick = InvUtils.find(stack -> stack.is(Items.NETHERITE_PICKAXE) || stack.is(Items.DIAMOND_PICKAXE));
             if (!miningPick.found()) { error("PitStop: no pickaxe."); stage = Stage.FAIL; return; }
 
             InvUtils.swap(miningPick.slot(), true);
             lookAt(miningPos);
-            mc.getNetworkHandler().sendPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, miningPos, dir));
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, miningPos, dir));
+            mc.player.swing(InteractionHand.MAIN_HAND);
             miningActive = true;
             return;
         }
 
         lookAt(miningPos);
-        boolean cont = mc.interactionManager.updateBlockBreakingProgress(miningPos, dir);
-        if (!cont) mc.getNetworkHandler().sendPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, miningPos, dir));
+        boolean cont = mc.gameMode.continueDestroyBlock(miningPos, dir);
+        if (!cont) mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, miningPos, dir));
 
-        if (mc.world.isAir(miningPos)) {
-            mc.getNetworkHandler().sendPacket(new PlayerActionC2SPacket(PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK, miningPos, dir));
+        if (mc.level.isEmptyBlock(miningPos)) {
+            mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, miningPos, dir));
             miningActive = false;
             beginMineVerify();
         }
@@ -714,7 +714,7 @@ public class PitStop extends Module {
         if (miningPos == null) { stage = Stage.FAIL; return; }
 
         // If server rubber-banded the block back, restart mining immediately.
-        if (!mc.world.isAir(miningPos)) {
+        if (!mc.level.isEmptyBlock(miningPos)) {
             miningActive = false;
             stage = Stage.MINING;
             wait = 0;
@@ -786,16 +786,16 @@ public class PitStop extends Module {
             return;
         }
 
-        Vec3d tp = target.getEntityPos();
-        Vec3d pp = mc.player.getEntityPos();
+        Vec3 tp = target.position();
+        Vec3 pp = mc.player.position();
         double dx = tp.x - pp.x, dz = tp.z - pp.z;
 
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        mc.player.setYaw(yaw);
+        mc.player.setYRot(yaw);
 
-        try { mc.options.forwardKey.setPressed(true); } catch (Throwable ignored) {}
+        try { mc.options.keyUp.setDown(true); } catch (Throwable ignored) {}
 
-        double distSq = mc.player.squaredDistanceTo(tp);
+        double distSq = mc.player.distanceToSqr(tp);
         if (distSq < 2.0) {
             stopAllMovement();
             wait = pickupWait.get();
@@ -827,21 +827,21 @@ public class PitStop extends Module {
         if (homeFeet == null) { stage = Stage.FAIL; return; }
 
         // If we're already on the home block, start centering.
-        if (mc.player.getBlockPos().equals(homeFeet)) {
+        if (mc.player.blockPosition().equals(homeFeet)) {
             stopAllMovement();
             stage = Stage.CENTER_HOME;
             wait = 1;
             return;
         }
 
-        Vec3d pp = mc.player.getEntityPos();
-        Vec3d tp = homeCenter != null ? homeCenter : Vec3d.ofCenter(homeFeet);
+        Vec3 pp = mc.player.position();
+        Vec3 tp = homeCenter != null ? homeCenter : Vec3.atCenterOf(homeFeet);
 
         double dx = tp.x - pp.x, dz = tp.z - pp.z;
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        mc.player.setYaw(yaw);
+        mc.player.setYRot(yaw);
 
-        try { mc.options.forwardKey.setPressed(true); } catch (Throwable ignored) {}
+        try { mc.options.keyUp.setDown(true); } catch (Throwable ignored) {}
 
         // Close enough in XZ (within about a block) -> attempt center
         double distSqXZ = dx * dx + dz * dz;
@@ -858,7 +858,7 @@ public class PitStop extends Module {
         double tx = homeFeet.getX() + 0.5;
         double tz = homeFeet.getZ() + 0.5;
 
-        Vec3d pp = mc.player.getEntityPos();
+        Vec3 pp = mc.player.position();
         double dx = tx - pp.x;
         double dz = tz - pp.z;
 
@@ -872,9 +872,9 @@ public class PitStop extends Module {
 
         // Simple centering: face the target center and walk forward a bit.
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        mc.player.setYaw(yaw);
+        mc.player.setYRot(yaw);
 
-        try { mc.options.forwardKey.setPressed(true); } catch (Throwable ignored) {}
+        try { mc.options.keyUp.setDown(true); } catch (Throwable ignored) {}
         wait = 1; // re-evaluate next tick
     }
 
@@ -903,7 +903,7 @@ public class PitStop extends Module {
         if (homeFeet == null || mc.player == null) { stage = Stage.FAIL; return; }
 
         // Only center when on ground to avoid weird drift.
-        if (!mc.player.isOnGround()) {
+        if (!mc.player.onGround()) {
             stopAllMovement();
             wait = 1;
             return;
@@ -935,34 +935,34 @@ public class PitStop extends Module {
         }
 
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        mc.player.setYaw(yaw);
+        mc.player.setYRot(yaw);
 
-        try { mc.options.forwardKey.setPressed(true); } catch (Throwable ignored) {}
+        try { mc.options.keyUp.setDown(true); } catch (Throwable ignored) {}
         wait = 1; // re-evaluate next tick
     }
 
     private ItemEntity findClosestDropEntity(boolean kit) {
-        Vec3d center = miningPos != null ? Vec3d.ofCenter(miningPos) : mc.player.getEntityPos();
-        Box box = new Box(center, center).expand(6.0);
+        Vec3 center = miningPos != null ? Vec3.atCenterOf(miningPos) : mc.player.position();
+        AABB box = new AABB(center, center).inflate(6.0);
         ItemEntity best = null;
         double bestDist = Double.MAX_VALUE;
 
-        for (ItemEntity it : mc.world.getEntitiesByClass(ItemEntity.class, box, e -> true)) {
-            ItemStack s = it.getStack();
+        for (ItemEntity it : mc.level.getEntitiesOfClass(ItemEntity.class, box, e -> true)) {
+            ItemStack s = it.getItem();
             if (kit) {
                 if (!(s.getItem() instanceof BlockItem bi) || !(bi.getBlock() instanceof ShulkerBoxBlock)) continue;
-                if (!s.getName().getString().equals(activeBoxName())) continue;
+                if (!s.getHoverName().getString().equals(activeBoxName())) continue;
             } else {
-                if (!s.isOf(Items.ENDER_CHEST)) continue;
+                if (!s.is(Items.ENDER_CHEST)) continue;
             }
-            double d = mc.player.squaredDistanceTo(it.getEntityPos());
+            double d = mc.player.distanceToSqr(it.position());
             if (d < bestDist) { bestDist = d; best = it; }
         }
         return best;
     }
 
     private void returnShulkerToEC() {
-        if (!(mc.player.currentScreenHandler instanceof GenericContainerScreenHandler gh)) {
+        if (!(mc.player.containerMenu instanceof ChestMenu gh)) {
             stage = Stage.OPEN_EC_AGAIN;
             return;
         }
@@ -980,7 +980,7 @@ public class PitStop extends Module {
             return;
         }
 
-        if (!gh.getSlot(currentEcSlot).getStack().isEmpty()) {
+        if (!gh.getSlot(currentEcSlot).getItem().isEmpty()) {
             error("PitStop: Ender Chest slot " + currentEcSlot + " is not empty; cannot return shulker to original slot.");
             stage = Stage.FAIL;
             return;
@@ -1066,7 +1066,7 @@ public class PitStop extends Module {
 
     private boolean isBad(ItemStack s) {
         if (!isElytra(s)) return false;
-        int remaining = s.getMaxDamage() - s.getDamage();
+        int remaining = s.getMaxDamage() - s.getDamageValue();
         return remaining < threshold.get();
     }
 
@@ -1074,14 +1074,14 @@ public class PitStop extends Module {
         if (s == null || s.isEmpty()) return false;
         if (!(s.getItem() instanceof BlockItem bi)) return false;
         if (!(bi.getBlock() instanceof ShulkerBoxBlock)) return false;
-        String name = s.getName().getString();
+        String name = s.getHoverName().getString();
         return name.equals(activeBoxName());
     }
 
     private ItemStack getPlayerSlotStack(int slot) {
-        ScreenHandler h = mc.player.playerScreenHandler;
+        AbstractContainerMenu h = mc.player.inventoryMenu;
         if (slot < 0 || slot >= h.slots.size()) return ItemStack.EMPTY;
-        return h.getSlot(slot).getStack();
+        return h.getSlot(slot).getItem();
     }
 
     private int countDamagedInInventory() {
@@ -1104,16 +1104,16 @@ public class PitStop extends Module {
         return c;
     }
 
-    private int findDamagedSlotInContainerView(ShulkerBoxScreenHandler sh) {
+    private int findDamagedSlotInContainerView(ShulkerBoxMenu sh) {
         for (int i = 27; i <= 62; i++) {
-            ItemStack s = sh.getSlot(i).getStack();
+            ItemStack s = sh.getSlot(i).getItem();
             if (isElytra(s) && isBad(s)) return i;
         }
         return -1;
     }
 
-    private void clickContainerSlot(ShulkerBoxScreenHandler sh, int slot, SlotActionType type) {
-        mc.interactionManager.clickSlot(sh.syncId, slot, 0, type, mc.player);
+    private void clickContainerSlot(ShulkerBoxMenu sh, int slot, ContainerInput type) {
+        mc.gameMode.handleContainerInput(sh.containerId, slot, 0, type, mc.player);
     }
 
     /* =========================
@@ -1122,8 +1122,8 @@ public class PitStop extends Module {
 
     private boolean ensurePlatformReady() {
         if (homeFeet == null || platform == null) {
-            homeFeet = mc.player.getBlockPos();
-            homeCenter = Vec3d.ofCenter(homeFeet);
+            homeFeet = mc.player.blockPosition();
+            homeCenter = Vec3.atCenterOf(homeFeet);
             platform = detect2x2Platform(homeFeet);
             if (platform == null) {
                 error("PitStop: cannot detect 2x2 platform. Stand on it first.");
@@ -1137,9 +1137,9 @@ public class PitStop extends Module {
         // Enumerate 4 possible 2x2 corners that include feet.
         BlockPos[] corners = new BlockPos[] {
             feet,
-            feet.add(-1, 0, 0),
-            feet.add(0, 0, -1),
-            feet.add(-1, 0, -1)
+            feet.offset(-1, 0, 0),
+            feet.offset(0, 0, -1),
+            feet.offset(-1, 0, -1)
         };
 
         int yTop = feet.getY();
@@ -1164,7 +1164,7 @@ public class PitStop extends Module {
             boolean ok = true;
             for (BlockPos t : tops) {
                 BlockPos floor = new BlockPos(t.getX(), yFloor, t.getZ());
-                if (mc.world.isAir(floor)) { ok = false; break; }
+                if (mc.level.isEmptyBlock(floor)) { ok = false; break; }
             }
             if (!ok) continue;
 
@@ -1177,7 +1177,7 @@ public class PitStop extends Module {
     private BlockPos findExistingEnderChestOnPlatform() {
         if (platform == null) return null;
         for (BlockPos p : platform) {
-            if (mc.world.getBlockState(p).getBlock() instanceof EnderChestBlock) return p;
+            if (mc.level.getBlockState(p).getBlock() instanceof EnderChestBlock) return p;
         }
         return null;
     }
@@ -1202,9 +1202,9 @@ public class PitStop extends Module {
             if (homeFeet != null && p.getY() != homeFeet.getY()) continue;
 
             // Strict: empty cell only.
-            if (!mc.world.isAir(p)) continue;
+            if (!mc.level.isEmptyBlock(p)) continue;
 
-            double d = homeCenter.squaredDistanceTo(Vec3d.ofCenter(p));
+            double d = homeCenter.distanceToSqr(Vec3.atCenterOf(p));
             if (d > bestDist) { bestDist = d; best = p; }
         }
 
@@ -1217,39 +1217,39 @@ public class PitStop extends Module {
 
     private boolean placeOnFloorUp(BlockPos placePos) {
         if (placePos == null) return false;
-        BlockPos floor = placePos.down();
-        if (mc.world.isAir(floor)) return false;
+        BlockPos floor = placePos.below();
+        if (mc.level.isEmptyBlock(floor)) return false;
 
         lookAt(placePos);
 
-        Vec3d hitVec = Vec3d.ofCenter(floor).add(0, 0.5, 0);
+        Vec3 hitVec = Vec3.atCenterOf(floor).add(0, 0.5, 0);
         BlockHitResult hit = new BlockHitResult(hitVec, Direction.UP, floor, false);
 
-        ActionResult ar = mc.interactionManager.interactBlock(mc.player, Hand.MAIN_HAND, hit);
-        mc.player.swingHand(Hand.MAIN_HAND);
+        InteractionResult ar = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND, hit);
+        mc.player.swing(InteractionHand.MAIN_HAND);
 
-        return ar != ActionResult.FAIL;
+        return ar != InteractionResult.FAIL;
     }
 
     private void lookAt(BlockPos pos) {
         if (mc.player == null) return;
-        Vec3d eye = mc.player.getEyePos();
-        Vec3d target = Vec3d.ofCenter(pos);
-        Vec3d diff = target.subtract(eye);
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 target = Vec3.atCenterOf(pos);
+        Vec3 diff = target.subtract(eye);
         double dx = diff.x, dy = diff.y, dz = diff.z;
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         float pitch = (float) Math.toDegrees(-Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-        mc.player.setYaw(yaw);
-        mc.player.setPitch(pitch);
+        mc.player.setYRot(yaw);
+        mc.player.setXRot(pitch);
     }
 
     private void stopAllMovement() {
-        try { mc.options.forwardKey.setPressed(false); } catch (Throwable ignored) {}
-        try { mc.options.backKey.setPressed(false); } catch (Throwable ignored) {}
-        try { mc.options.leftKey.setPressed(false); } catch (Throwable ignored) {}
-        try { mc.options.rightKey.setPressed(false); } catch (Throwable ignored) {}
-        try { mc.options.jumpKey.setPressed(false); } catch (Throwable ignored) {}
-        try { mc.options.sneakKey.setPressed(false); } catch (Throwable ignored) {}
+        try { mc.options.keyUp.setDown(false); } catch (Throwable ignored) {}
+        try { mc.options.keyDown.setDown(false); } catch (Throwable ignored) {}
+        try { mc.options.keyLeft.setDown(false); } catch (Throwable ignored) {}
+        try { mc.options.keyRight.setDown(false); } catch (Throwable ignored) {}
+        try { mc.options.keyJump.setDown(false); } catch (Throwable ignored) {}
+        try { mc.options.keyShift.setDown(false); } catch (Throwable ignored) {}
     }
 
     private void selectPreferredHotbarSlot() {
@@ -1257,8 +1257,8 @@ public class PitStop extends Module {
         int preferred = Math.max(0, Math.min(8, preferredSlot.get()));
         if (mc.player.getInventory().getSelectedSlot() != preferred) {
             mc.player.getInventory().setSelectedSlot(preferred);
-            if (mc.getNetworkHandler() != null) {
-                mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(preferred));
+            if (mc.getConnection() != null) {
+                mc.getConnection().send(new ServerboundSetCarriedItemPacket(preferred));
             }
         }
     }
@@ -1274,12 +1274,12 @@ public class PitStop extends Module {
         }
 
         int selectedContainerSlot = 36 + selected;
-        ScreenHandler h = mc.player.playerScreenHandler;
+        AbstractContainerMenu h = mc.player.inventoryMenu;
 
         try {
-            mc.interactionManager.clickSlot(h.syncId, it.slot(), 0, SlotActionType.PICKUP, mc.player);
-            mc.interactionManager.clickSlot(h.syncId, selectedContainerSlot, 0, SlotActionType.PICKUP, mc.player);
-            mc.interactionManager.clickSlot(h.syncId, it.slot(), 0, SlotActionType.PICKUP, mc.player);
+            mc.gameMode.handleContainerInput(h.containerId, it.slot(), 0, ContainerInput.PICKUP, mc.player);
+            mc.gameMode.handleContainerInput(h.containerId, selectedContainerSlot, 0, ContainerInput.PICKUP, mc.player);
+            mc.gameMode.handleContainerInput(h.containerId, it.slot(), 0, ContainerInput.PICKUP, mc.player);
             return true;
         } catch (Exception ex) {
             return false;
@@ -1291,10 +1291,10 @@ public class PitStop extends Module {
         int selected = mc.player.getInventory().getSelectedSlot();
         for (int i = 0; i < 9; i++) {
             if (i == exclude) continue;
-            if (mc.player.getInventory().getStack(i).isEmpty()) return i;
+            if (mc.player.getInventory().getItem(i).isEmpty()) return i;
         }
         if (selected != exclude) {
-            ItemStack cur = mc.player.getInventory().getStack(selected);
+            ItemStack cur = mc.player.getInventory().getItem(selected);
             if (cur.isEmpty()) return selected;
         }
         for (int i = 0; i < 9; i++) if (i != exclude) return i;

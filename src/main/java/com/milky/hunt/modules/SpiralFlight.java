@@ -8,8 +8,8 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.Mth;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -129,7 +129,7 @@ public class SpiralFlight extends Module {
 
     @Override
     public void onActivate() {
-        if (mc.player == null || mc.world == null) { toggle(); return; }
+        if (mc.player == null || mc.level == null) { toggle(); return; }
         if(init==0){
             centerXrt = mc.player.getX();
             centerZrt = mc.player.getZ();
@@ -144,8 +144,8 @@ public class SpiralFlight extends Module {
         phase = Phase.DONE;
     }
     @Override
-    public NbtCompound toTag() {
-        NbtCompound tag = super.toTag();
+    public CompoundTag toTag() {
+        CompoundTag tag = super.toTag();
         tag.putDouble("centerXrt", centerXrt);
         tag.putDouble("centerZrt", centerZrt);
         tag.putDouble("thetaOnPath", thetaOnPath); 
@@ -153,7 +153,7 @@ public class SpiralFlight extends Module {
         return tag;
     }
     @Override
-    public Module fromTag(NbtCompound tag) {
+    public Module fromTag(CompoundTag tag) {
         if (tag.contains("centerXrt")) centerXrt = Utils.NbtgetDouble(tag,"centerXrt",0.0);
         if (tag.contains("centerZrt")) centerZrt = Utils.NbtgetDouble(tag,"centerZrt",0.0);
         if (tag.contains("thetaOnPath")) thetaOnPath = Utils.NbtgetDouble(tag,"thetaOnPath",0.0);
@@ -162,7 +162,7 @@ public class SpiralFlight extends Module {
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onTick(TickEvent.Pre event) {
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
         if (phase != Phase.SPIRAL) return;
         if (reset.get().isPressed()){
             centerXrt = mc.player.getX();
@@ -222,14 +222,14 @@ public class SpiralFlight extends Module {
     }
 
     private void faceYawSmooth(float yawTargetDeg, float maxDeltaDeg) {
-        float yaw = mc.player.getYaw();
+        float yaw = mc.player.getYRot();
         float diff = wrapDeg(yawTargetDeg - yaw);
         if (maxDeltaDeg <= 0f) {
-            mc.player.setYaw(yaw + diff);
+            mc.player.setYRot(yaw + diff);
             return;
         }
-        float step = MathHelper.clamp(diff, -maxDeltaDeg, maxDeltaDeg);
-        mc.player.setYaw(yaw + step);
+        float step = Mth.clamp(diff, -maxDeltaDeg, maxDeltaDeg);
+        mc.player.setYRot(yaw + step);
     }
 
     private static float wrapDeg(double deg) {

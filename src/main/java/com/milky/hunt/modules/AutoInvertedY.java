@@ -7,21 +7,19 @@ import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import meteordevelopment.meteorclient.settings.BlockSetting;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -102,10 +100,10 @@ public class AutoInvertedY extends Module {
         index = 0;
         delay = 0;
 
-        Vec3d dir = mc.player.getRotationVec(1.0f);
-        Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
-        BlockPos basePos = BlockPos.ofFloored(target);
+        Vec3 dir = mc.player.getViewVector(1.0f);
+        Vec3 horizontal = new Vec3(dir.x, 0, dir.z).normalize().scale(2.0);
+        Vec3 target = mc.player.position().add(horizontal).add(0, 2, 0);
+        BlockPos basePos = BlockPos.containing(target);
 
         // Horizontal bar
         boolean eastWest = Math.abs(dir.z) >= Math.abs(dir.x);  // true = wings on west/east
@@ -113,12 +111,12 @@ public class AutoInvertedY extends Module {
         tBlocks.add(basePos);
         if (eastWest) {
             // Player is facing mostly north/south → use west/east wings
-            tBlocks.add(basePos.west().down());
-            tBlocks.add(basePos.east().down());
+            tBlocks.add(basePos.west().below());
+            tBlocks.add(basePos.east().below());
         } else {
             // Player is facing mostly east/west → use north/south wings
-            tBlocks.add(basePos.north().down());
-            tBlocks.add(basePos.south().down());
+            tBlocks.add(basePos.north().below());
+            tBlocks.add(basePos.south().below());
         }
 
         int stemHeight = switch (height.get()) {
@@ -128,26 +126,26 @@ public class AutoInvertedY extends Module {
         };
 
         for (int i = 1; i <= stemHeight; i++) {
-            tBlocks.add(basePos.up(i));
+            tBlocks.add(basePos.above(i));
         }
         
         Item targetItem = block.get().asItem();
         
         int count = 0;
         for (int i = 0; i < 36; i++) {
-            if (mc.player.getInventory().getStack(i).getItem() == block.get().asItem()) {
-                count += mc.player.getInventory().getStack(i).getCount();
+            if (mc.player.getInventory().getItem(i).getItem() == block.get().asItem()) {
+                count += mc.player.getInventory().getItem(i).getCount();
             }
         }
 
         if (count < tBlocks.size()) {
-            error("Not enough " + block.get().asItem().getName().getString() + " (need " + tBlocks.size() + ").");
+            error("Not enough " + Names.get(block.get().asItem()) + " (need " + tBlocks.size() + ").");
             toggle();
             return;
         }
 
         for (int i = 0; i < 9; i++) {
-            if (mc.player.getInventory().getStack(i).getItem() == block.get().asItem()) {
+            if (mc.player.getInventory().getItem(i).getItem() == block.get().asItem()) {
                 mc.player.getInventory().setSelectedSlot(i);
                 break;
             }
@@ -163,7 +161,7 @@ public class AutoInvertedY extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         if (index >= tBlocks.size()) {
             info("Y shape complete.");
@@ -177,41 +175,41 @@ public class AutoInvertedY extends Module {
         for (int i = 0; i < blocksPerTick.get() && index < tBlocks.size(); i++) {
             BlockPos pos = tBlocks.get(index);
 
-            if (!mc.world.getBlockState(pos).isReplaceable()) return;
+            if (!mc.level.getBlockState(pos).canBeReplaced()) return;
 
             // Find block
             int slotToUse = -1;
             for (int s = 0; s < 9; s++) {
-                if (mc.player.getInventory().getStack(s).getItem() == block.get().asItem()) {
+                if (mc.player.getInventory().getItem(s).getItem() == block.get().asItem()) {
                     slotToUse = s;
                     break;
                 }
             }
 
             if (slotToUse == -1) {
-                error("No "+ block.get().asItem().getName().getString() + " in hotbar.");
+                error("No "+ Names.get(block.get().asItem()) + " in hotbar.");
                 toggle();
                 return;
             }
 
             mc.player.getInventory().setSelectedSlot(slotToUse);
 
-            if (!(mc.player.getMainHandStack().getItem() instanceof BlockItem)) {
+            if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) {
                 error("Main hand is not a block.");
                 toggle();
                 return;
             }
 
-            BlockHitResult bhr = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
+            BlockHitResult bhr = new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
 
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-            mc.player.networkHandler.sendPacket(new PlayerInteractBlockC2SPacket(
-                Hand.OFF_HAND, bhr, mc.player.currentScreenHandler.getRevision() + 2));
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            mc.player.connection.send(new ServerboundUseItemOnPacket(
+                InteractionHand.OFF_HAND, bhr, mc.player.containerMenu.getStateId() + 2));
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
 
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.player.swing(InteractionHand.MAIN_HAND);
             index++;
         }
 

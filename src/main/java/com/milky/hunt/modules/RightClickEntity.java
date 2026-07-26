@@ -6,15 +6,14 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.projectile.ProjectileUtil;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -99,7 +98,7 @@ public class RightClickEntity extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (mc.world == null || mc.player == null || mc.interactionManager == null) return;
+        if (mc.level == null || mc.player == null || mc.gameMode == null) return;
 
         // Periodically clear used list (if enabled)
         if (oneTime.get()) {
@@ -115,14 +114,14 @@ public class RightClickEntity extends Module {
         Rotation2 bestRot = null;
         double bestDistSq = Double.POSITIVE_INFINITY;
 
-        for (Entity entity : mc.world.getEntities()) {
+        for (Entity entity : mc.level.entitiesForRendering()) {
             if (!(entity instanceof LivingEntity living)) continue;
             if (!isValidTarget(living)) continue;
 
             Rotation2 rot = findRaycastedRotation(living, range.get());
             if (rot == null) continue;
 
-            double d2 = mc.player.squaredDistanceTo(living);
+            double d2 = mc.player.distanceToSqr(living);
             if (d2 < bestDistSq) {
                 bestDistSq = d2;
                 best = living;
@@ -137,7 +136,7 @@ public class RightClickEntity extends Module {
         final float pitch = bestRot.pitch;
 
         Rotations.rotate(yaw, pitch, () -> {
-            if (mc.player == null || mc.interactionManager == null || mc.world == null) return;
+            if (mc.player == null || mc.gameMode == null || mc.level == null) return;
             if (!isValidTarget(target)) return;
 
             EntityHitResult hit = raycastEntitySpecific(target, range.get(), yaw, pitch);
@@ -145,7 +144,7 @@ public class RightClickEntity extends Module {
 
             interactZenithStyle(target, hit);
 
-            if (oneTime.get()) used.add(target.getUuid());
+            if (oneTime.get()) used.add(target.getUUID());
         });
 
         if (oneInteractionPerTick.get()) {
@@ -161,7 +160,7 @@ public class RightClickEntity extends Module {
         if (ignoreBabies.get() && entity.isBaby()) return false;
 
         if (mc.player.distanceTo(entity) > range.get()) return false;
-        if (oneTime.get() && used.contains(entity.getUuid())) return false;
+        if (oneTime.get() && used.contains(entity.getUUID())) return false;
 
         return true;
     }
@@ -169,17 +168,17 @@ public class RightClickEntity extends Module {
     private Rotation2 findRaycastedRotation(LivingEntity target, double maxRange) {
         if (mc.player == null) return null;
 
-        Vec3d eye = target.getEyePos();
-        Vec3d center = target.getBoundingBox().getCenter();
-        Vec3d mid = target.getEntityPos().add(0, Math.max(0.2, target.getStandingEyeHeight() * 0.6), 0);
+        Vec3 eye = target.getEyePosition();
+        Vec3 center = target.getBoundingBox().getCenter();
+        Vec3 mid = target.position().add(0, Math.max(0.2, target.getEyeHeight() * 0.6), 0);
 
-        Vec3d[] points = new Vec3d[] { eye, mid, center };
+        Vec3[] points = new Vec3[] { eye, mid, center };
 
-        float playerYaw = mc.player.getYaw();
+        float playerYaw = mc.player.getYRot();
         Rotation2 best = null;
         float bestYawDelta = Float.MAX_VALUE;
 
-        for (Vec3d p : points) {
+        for (Vec3 p : points) {
             float yaw = (float) Rotations.getYaw(p);
             float pitch = (float) Rotations.getPitch(p);
 
@@ -199,15 +198,15 @@ public class RightClickEntity extends Module {
     private EntityHitResult raycastEntitySpecific(LivingEntity target, double maxRange, float yaw, float pitch) {
         if (mc.player == null) return null;
 
-        Vec3d start = mc.player.getEyePos();
-        Vec3d dir = Vec3d.fromPolar(pitch, yaw);
-        Vec3d end = start.add(dir.multiply(maxRange));
+        Vec3 start = mc.player.getEyePosition();
+        Vec3 dir = Vec3.directionFromRotation(pitch, yaw);
+        Vec3 end = start.add(dir.scale(maxRange));
 
-        Box box = mc.player.getBoundingBox()
-            .stretch(dir.multiply(maxRange))
-            .expand(1.0, 1.0, 1.0);
+        AABB box = mc.player.getBoundingBox()
+            .expandTowards(dir.scale(maxRange))
+            .inflate(1.0, 1.0, 1.0);
 
-        return ProjectileUtil.raycast(
+        return ProjectileUtil.getEntityHitResult(
             mc.player,
             start,
             end,
@@ -218,11 +217,10 @@ public class RightClickEntity extends Module {
     }
 
     private void interactZenithStyle(LivingEntity target, EntityHitResult hit) {
-        if (mc.player == null || mc.interactionManager == null) return;
+        if (mc.player == null || mc.gameMode == null) return;
 
-        mc.interactionManager.interactEntityAtLocation(mc.player, target, hit, Hand.MAIN_HAND);
-        mc.interactionManager.interactEntity(mc.player, target, Hand.MAIN_HAND);
-        mc.player.swingHand(Hand.MAIN_HAND);
+        mc.gameMode.interact(mc.player, target, hit, InteractionHand.MAIN_HAND);
+        mc.player.swing(InteractionHand.MAIN_HAND);
     }
 
     private static float wrapDegrees(float degrees) {

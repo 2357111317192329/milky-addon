@@ -19,9 +19,9 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import xaero.common.minimap.waypoints.Waypoint;
 import xaero.hud.minimap.BuiltInHudModules;
 import xaero.hud.minimap.module.MinimapSession;
@@ -139,8 +139,8 @@ public class WaypointQueue extends Module {
         BlockPos target = points[currentIndex].get();
         if (target == null) return;
 
-        Vec3d playerPos = mc.player.getEntityPos();
-        Vec3d targetPos = new Vec3d(target.getX() + 0.5, playerPos.y, target.getZ() + 0.5);
+        Vec3 playerPos = mc.player.position();
+        Vec3 targetPos = new Vec3(target.getX() + 0.5, playerPos.y, target.getZ() + 0.5);
 
         double dx = targetPos.x - playerPos.x;
         double dz = targetPos.z - playerPos.z;
@@ -157,14 +157,14 @@ public class WaypointQueue extends Module {
         }
 
         float desiredYaw = (float) (Math.toDegrees(Math.atan2(-dx, dz)));
-        ClientPlayerEntity p = mc.player;
-        float currentYaw = p.getYaw();
+        LocalPlayer p = mc.player;
+        float currentYaw = p.getYRot();
         float delta = wrapDegrees(desiredYaw - currentYaw);
         float maxStep = yawSpeed.get().floatValue();
         if (delta > maxStep) delta = maxStep;
         if (delta < -maxStep) delta = -maxStep;
 
-        p.setYaw(currentYaw + delta);
+        p.setYRot(currentYaw + delta);
     }
 
     private void advance(int used) {
@@ -353,7 +353,7 @@ public class WaypointQueue extends Module {
                 WButton use = table.add(theme.button("Use")).widget();
                 use.action = () -> {
                     onPick.accept(new BlockPos(w.getX(), w.getY(), w.getZ()));
-                    close();
+                    onClose();
                 };
 
                 table.row();

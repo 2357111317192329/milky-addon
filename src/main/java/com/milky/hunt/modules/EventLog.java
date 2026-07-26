@@ -15,22 +15,20 @@ import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.orbit.EventHandler;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.ScreenshotRecorder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityStatuses;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.s2c.common.DisconnectS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
-import net.minecraft.registry.Registries;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityEvent;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -355,12 +353,12 @@ public class EventLog extends Module {
     @EventHandler
     private void onReceivePacket(PacketEvent.Receive event) {
         if (!logOnTotem.get()) return;
-        if (!(event.packet instanceof EntityStatusS2CPacket p)) return;
-        if (p.getStatus() != EntityStatuses.USE_TOTEM_OF_UNDYING) return;
+        if (!(event.packet instanceof ClientboundEntityEventPacket p)) return;
+        if (p.getEventId() != EntityEvent.PROTECTED_FROM_DEATH) return;
 
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
-        Entity e = p.getEntity(mc.world);
+        Entity e = p.getEntity(mc.level);
         if (e == null || !e.equals(mc.player)) return;
 
         pops++;
@@ -372,7 +370,7 @@ public class EventLog extends Module {
     @EventHandler
     private void onTick(TickEvent.Post event) {
         // If in the 2b2t queue
-        if (mc.player == null || mc.player.getAbilities().allowFlying) return;
+        if (mc.player == null || mc.player.getAbilities().mayfly) return;
 
         // ===== Health mode =====
         if (logOnHealth.get()) {
@@ -397,12 +395,12 @@ public class EventLog extends Module {
         }
 
         // ===== Player detection (AutoLog-style) =====
-        if (logOnPlayer.get() && mc.world != null) {
-            for (Entity entity : mc.world.getEntities()) {
-                if (!(entity instanceof PlayerEntity p)) continue;
+        if (logOnPlayer.get() && mc.level != null) {
+            for (Entity entity : mc.level.entitiesForRendering()) {
+                if (!(entity instanceof Player p)) continue;
 
                 // exclude self (AutoLog-style by UUID)
-                if (p.getUuid().equals(mc.player.getUuid())) continue;
+                if (p.getUUID().equals(mc.player.getUUID())) continue;
 
                 // ignore friends optionally
                 if (ignoreFriends.get() && Friends.get().isFriend(p)) continue;
@@ -413,14 +411,14 @@ public class EventLog extends Module {
         }
 
         // ===== Entities detection =====
-        if (logOnEntities.get() && mc.world != null && !entities.get().isEmpty()) {
+        if (logOnEntities.get() && mc.level != null && !entities.get().isEmpty()) {
             int total = 0;
             entityCounts.clear();
 
             Entity nearest = null;
             double nearestDist = Double.POSITIVE_INFINITY;
 
-            for (Entity entity : mc.world.getEntities()) {
+            for (Entity entity : mc.level.entitiesForRendering()) {
                 if (!entities.get().contains(entity.getType())) continue;
 
                 double d = mc.player.distanceTo(entity);
@@ -477,8 +475,8 @@ public class EventLog extends Module {
             }
         }
 
-        if (logPortal.get() && mc.player.portalManager != null) {
-            if (mc.player.portalManager.isInPortal()) {
+        if (logPortal.get() && mc.player.portalProcess != null) {
+            if (mc.player.portalProcess.isInsidePortalThisTick()) {
                 currPortalTicks++;
                 if (currPortalTicks > portalTicks.get()) {
                     logOut("Portal ticks=" + currPortalTicks + " (limit " + portalTicks.get() + ").", true);
@@ -495,7 +493,7 @@ public class EventLog extends Module {
         }
 
         if (logOnVy.get()) {
-            double vyPerTick = mc.player.getVelocity().y;
+            double vyPerTick = mc.player.getDeltaMovement().y;
             double vyPerSecond = vyPerTick * 20.0;
 
             if (vyPerSecond <= vyThreshold.get()) {
@@ -506,13 +504,13 @@ public class EventLog extends Module {
 
         if (logArmor.get()) {
             for (int i = 0; i < 4; i++) {
-                ItemStack armorPiece = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + i);
+                ItemStack armorPiece = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + i);
 
                 if (ignoreElytra.get() && armorPiece.getItem() == Items.ELYTRA) continue;
 
-                if (armorPiece.isDamageable()) {
+                if (armorPiece.isDamageableItem()) {
                     int max = armorPiece.getMaxDamage();
-                    int dmg = armorPiece.getDamage();
+                    int dmg = armorPiece.getDamageValue();
                     int left = Math.max(0, max - dmg);
                     double percentUndamaged = 100.0 - ((double) dmg / (double) max) * 100.0;
 
@@ -525,9 +523,9 @@ public class EventLog extends Module {
         }
 
         if (logPosition.get()) {
-            double distanceToTarget = mc.player.getEntityPos()
+            double distanceToTarget = mc.player.position()
                 .multiply(1, 0, 1)
-                .distanceTo(position.get().toCenterPos().multiply(1, 0, 1));
+                .distanceTo(position.get().getCenter().multiply(1, 0, 1));
 
             if (distanceToTarget < distance.get()) {
                 BlockPos p = position.get();
@@ -547,9 +545,9 @@ public class EventLog extends Module {
 
         // Optional pre-disconnect screenshot
         if (screenshotPreDisconnect.get()) {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
 
-            if (client.isOnThread()) {
+            if (client.isSameThread()) {
                 EventLogShots.capturePreDisconnect(client);
             } else {
                 client.execute(() -> EventLogShots.capturePreDisconnect(client));
@@ -560,21 +558,21 @@ public class EventLog extends Module {
 
         if (illegalDisconnect.get()) {
             // upstream behavior kept
-            mc.player.networkHandler.sendChatMessage(String.valueOf((char) 0));
+            mc.player.connection.sendChat(String.valueOf((char) 0));
         } else {
-            mc.player.networkHandler.onDisconnect(
-                new DisconnectS2CPacket(buildDisconnectText(reason))
+            mc.player.connection.handleDisconnect(
+                new ClientboundDisconnectPacket(buildDisconnectText(reason))
             );
         }
     }
 
-    private Text buildDisconnectText(String reason) {
-        MutableText t = Text.literal("[EventLog] ").append(Text.literal(reason));
+    private Component buildDisconnectText(String reason) {
+        MutableComponent t = Component.literal("[EventLog] ").append(Component.literal(reason));
 
         if (screenshotPreDisconnect.get()) {
             String fn = EventLogShots.lastPreScreenshotFileName;
             if (fn != null && !fn.isBlank()) {
-                t.append(Text.literal("\nScreenshot: " + fn));
+                t.append(Component.literal("\nScreenshot: " + fn));
             }
         }
 
@@ -601,21 +599,21 @@ public class EventLog extends Module {
         return "Totem pops: " + pops + " (thr " + totemPops.get() + ").";
     }
 
-    private String buildPlayerReason(PlayerEntity p) {
+    private String buildPlayerReason(Player p) {
         double d = mc.player.distanceTo(p);
-        return "Player: " + p.getName().getString() + ", uuid=" + p.getUuid() + ", dist=" + fmt1(d)
+        return "Player: " + p.getName().getString() + ", uuid=" + p.getUUID() + ", dist=" + fmt1(d)
             + (ignoreFriends.get() ? " (ignore-friends ON)." : ".");
     }
 
     private String buildEntitiesTotalReason(int total, Entity nearest, double nearestDist) {
-        String near = (nearest != null) ? (", near=" + Registries.ENTITY_TYPE.getId(nearest.getType()) + "@" + fmt1(nearestDist)) : "";
+        String near = (nearest != null) ? (", near=" + BuiltInRegistries.ENTITY_TYPE.getKey(nearest.getType()) + "@" + fmt1(nearestDist)) : "";
         return "Entities: total=" + total + " (>= " + combinedEntityThreshold.get() + "), r=" + entityRange.get()
             + ", top=" + topEntityBreakdown(2) + near + ".";
     }
 
     private String buildEntitiesIndividualReason(EntityType<?> type, int count, int total, Entity nearest, double nearestDist) {
-        String id = Registries.ENTITY_TYPE.getId(type).toString();
-        String near = (nearest != null) ? (", near=" + Registries.ENTITY_TYPE.getId(nearest.getType()) + "@" + fmt1(nearestDist)) : "";
+        String id = BuiltInRegistries.ENTITY_TYPE.getKey(type).toString();
+        String near = (nearest != null) ? (", near=" + BuiltInRegistries.ENTITY_TYPE.getKey(nearest.getType()) + "@" + fmt1(nearestDist)) : "";
         return "Entities: " + id + " x" + count + " (>= " + individualEntityThreshold.get() + "), total=" + total + ", r=" + entityRange.get()
             + ", top=" + topEntityBreakdown(2) + near + ".";
     }
@@ -637,7 +635,7 @@ public class EventLog extends Module {
         int n = Math.min(maxItems, list.size());
         for (int i = 0; i < n; i++) {
             var e = list.get(i);
-            String id = Registries.ENTITY_TYPE.getId(e.getKey()).toString();
+            String id = BuiltInRegistries.ENTITY_TYPE.getKey(e.getKey()).toString();
             if (i > 0) sb.append(",");
             sb.append(id).append("x").append(e.getIntValue());
         }
@@ -739,7 +737,7 @@ public class EventLog extends Module {
         /** .minecraft root (prefer MinecraftClient.runDirectory; fallback FabricLoader gameDir) */
         public static File getGameDir() {
             try {
-                File runDir = MinecraftClient.getInstance().runDirectory;
+                File runDir = Minecraft.getInstance().gameDirectory;
                 if (runDir != null) return runDir;
             } catch (Throwable ignored) {}
 
@@ -760,7 +758,7 @@ public class EventLog extends Module {
             return dir;
         }
 
-        public static void capturePreDisconnect(MinecraftClient mc) {
+        public static void capturePreDisconnect(Minecraft mc) {
             try {
                 File dirFile = getEventLogDir(); // ensure folder exists
                 Path dir = dirFile.toPath();
@@ -773,9 +771,9 @@ public class EventLog extends Module {
                     i++;
                 }
                 final Path finalOut = out;
-                ScreenshotRecorder.takeScreenshot(mc.getFramebuffer(), img -> {
+                Screenshot.takeScreenshot(mc.getMainRenderTarget(), img -> {
                     try (img) {
-                        img.writeTo(finalOut);
+                        img.writeToFile(finalOut);
                     }catch (Throwable t) {
                         lastPreScreenshotFileName = null;
                         return;

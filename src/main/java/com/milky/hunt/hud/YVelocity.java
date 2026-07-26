@@ -10,13 +10,13 @@ import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.utils.render.color.Color;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 public class YVelocity extends HudElement {
     public static final HudElementInfo<YVelocity> INFO =
         new HudElementInfo<>(Addon.HUD_GROUP, "Y-Velocity", "Vertical velocity with unit.", YVelocity::new);
 
-    private final MinecraftClient mc;
+    private final Minecraft mc;
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
@@ -56,13 +56,13 @@ public class YVelocity extends HudElement {
 
     public YVelocity() {
         super(INFO);
-        mc = MinecraftClient.getInstance();
+        mc = Minecraft.getInstance();
     }
 
     @Override
     public void render(HudRenderer renderer) {
         double vy = 0.0;
-        if (mc.player != null) vy = mc.player.getVelocity().y;
+        if (mc.player != null) vy = mc.player.getDeltaMovement().y;
 
         filteredVy = smoothing.get() == 0.0 ? vy : (smoothing.get() * filteredVy + (1.0 - smoothing.get()) * vy);
 

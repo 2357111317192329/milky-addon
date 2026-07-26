@@ -8,13 +8,11 @@ import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.utils.player.SlotUtils;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
-
-import net.minecraft.block.Block;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.registry.Registries;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -56,7 +54,7 @@ public class QuickCommand extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) return;
+        if (mc.player == null || mc.level == null || mc.getConnection() == null) return;
         if (hasSent) return;
 
         if (totalDelayMsSnapshot > 0 && System.nanoTime() < sendAtNanos) {
@@ -66,9 +64,9 @@ public class QuickCommand extends Module {
         String parsed = parseCommand(command.get());
 
         if (parsed.startsWith("/")) {
-            mc.getNetworkHandler().sendPacket(new CommandExecutionC2SPacket(parsed.substring(1)));
+            mc.getConnection().send(new ServerboundChatCommandPacket(parsed.substring(1)));
         } else {
-            mc.getNetworkHandler().sendChatMessage(parsed);
+            mc.getConnection().sendChat(parsed);
         }
 
         hasSent = true;
@@ -94,40 +92,40 @@ public class QuickCommand extends Module {
         String time = LocalTime.now().toString().split("\\.")[0];
         String timestamp = LocalDateTime.now().toString().replace("T", " ").split("\\.")[0];
 
-        String dimension = mc.world.getRegistryKey().getValue().toString();
+        String dimension = mc.level.dimension().identifier().toString();
         String playerName = mc.player.getName().getString();
-        String uuid = mc.player.getUuidAsString();
+        String uuid = mc.player.getStringUUID();
 
         float health = mc.player.getHealth();
         float maxHealth = mc.player.getMaxHealth();
-        int hunger = mc.player.getHungerManager().getFoodLevel();
+        int hunger = mc.player.getFoodData().getFoodLevel();
         int xp = mc.player.experienceLevel;
-        String facing = mc.player.getHorizontalFacing().toString();
+        String facing = mc.player.getDirection().toString();
 
-        String serverIp = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().address : "localhost";
-        String serverName = mc.getCurrentServerEntry() != null ? mc.getCurrentServerEntry().name : "singleplayer";
+        String serverIp = mc.getCurrentServer() != null ? mc.getCurrentServer().ip : "localhost";
+        String serverName = mc.getCurrentServer() != null ? mc.getCurrentServer().name : "singleplayer";
 
-        ItemStack mainHand = mc.player.getMainHandStack();
-        ItemStack offHand = mc.player.getOffHandStack();
+        ItemStack mainHand = mc.player.getMainHandItem();
+        ItemStack offHand = mc.player.getOffhandItem();
 
-        ItemStack helmet = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 3);
-        ItemStack chest = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 2);
-        ItemStack legs = mc.player.getInventory().getStack(SlotUtils.ARMOR_START + 1);
-        ItemStack boots = mc.player.getInventory().getStack(SlotUtils.ARMOR_START);
+        ItemStack helmet = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 3);
+        ItemStack chest = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 2);
+        ItemStack legs = mc.player.getInventory().getItem(SlotUtils.ARMOR_START + 1);
+        ItemStack boots = mc.player.getInventory().getItem(SlotUtils.ARMOR_START);
 
-        BlockPos posUnder = mc.player.getBlockPos().down();
-        Block blockUnder = mc.world.getBlockState(posUnder).getBlock();
-        String biome = mc.world.getBiome(posUnder).getKey().get().getValue().toString();
-        int light = mc.world.getLightLevel(posUnder);
+        BlockPos posUnder = mc.player.blockPosition().below();
+        Block blockUnder = mc.level.getBlockState(posUnder).getBlock();
+        String biome = mc.level.getBiome(posUnder).unwrapKey().get().identifier().toString();
+        int light = mc.level.getMaxLocalRawBrightness(posUnder);
 
-        boolean sneaking = mc.player.isSneaking();
+        boolean sneaking = mc.player.isShiftKeyDown();
         boolean sprinting = mc.player.isSprinting();
-        boolean onGround = mc.player.isOnGround();
-        int air = mc.player.getAir();
-        int fireTicks = mc.player.getFireTicks();
+        boolean onGround = mc.player.onGround();
+        int air = mc.player.getAirSupply();
+        int fireTicks = mc.player.getRemainingFireTicks();
 
-        List<String> nearbyNames = mc.world.getPlayers().stream()
-            .filter(p -> !p.getUuid().equals(mc.player.getUuid()))
+        List<String> nearbyNames = mc.level.players().stream()
+            .filter(p -> !p.getUUID().equals(mc.player.getUUID()))
             .map(p -> p.getGameProfile().name())
             .collect(Collectors.toList());
 
@@ -158,23 +156,23 @@ public class QuickCommand extends Module {
             .replace("{BlockUnder}", blockUnder.getName().getString())
             .replace("{Biome}", biome)
             .replace("{LightLevel}", String.valueOf(light))
-            .replace("{MainHand}", mainHand.getName().getString())
-            .replace("{MainHandRaw}", Registries.ITEM.getId(mainHand.getItem()).toString())
-            .replace("{OffHand}", offHand.getName().getString())
-            .replace("{OffHandRaw}", Registries.ITEM.getId(offHand.getItem()).toString())
-            .replace("{Helmet}", helmet.getName().getString())
-            .replace("{HelmetRaw}", Registries.ITEM.getId(helmet.getItem()).toString())
-            .replace("{Chestplate}", chest.getName().getString())
-            .replace("{ChestplateRaw}", Registries.ITEM.getId(chest.getItem()).toString())
-            .replace("{Leggings}", legs.getName().getString())
-            .replace("{LeggingsRaw}", Registries.ITEM.getId(legs.getItem()).toString())
-            .replace("{Boots}", boots.getName().getString())
-            .replace("{BootsRaw}", Registries.ITEM.getId(boots.getItem()).toString());
+            .replace("{MainHand}", mainHand.getHoverName().getString())
+            .replace("{MainHandRaw}", BuiltInRegistries.ITEM.getKey(mainHand.getItem()).toString())
+            .replace("{OffHand}", offHand.getHoverName().getString())
+            .replace("{OffHandRaw}", BuiltInRegistries.ITEM.getKey(offHand.getItem()).toString())
+            .replace("{Helmet}", helmet.getHoverName().getString())
+            .replace("{HelmetRaw}", BuiltInRegistries.ITEM.getKey(helmet.getItem()).toString())
+            .replace("{Chestplate}", chest.getHoverName().getString())
+            .replace("{ChestplateRaw}", BuiltInRegistries.ITEM.getKey(chest.getItem()).toString())
+            .replace("{Leggings}", legs.getHoverName().getString())
+            .replace("{LeggingsRaw}", BuiltInRegistries.ITEM.getKey(legs.getItem()).toString())
+            .replace("{Boots}", boots.getHoverName().getString())
+            .replace("{BootsRaw}", BuiltInRegistries.ITEM.getKey(boots.getItem()).toString());
 
         for (int i = 0; i < 36; i++) {
-            ItemStack stack = mc.player.getInventory().getStack(i);
-            String name = stack.isEmpty() ? "air" : stack.getName().getString();
-            String raw = stack.isEmpty() ? "minecraft:air" : Registries.ITEM.getId(stack.getItem()).toString();
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            String name = stack.isEmpty() ? "air" : stack.getHoverName().getString();
+            String raw = stack.isEmpty() ? "minecraft:air" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
             result = result.replace("{Inventory" + i + "}", name);
             result = result.replace("{Inventory" + i + "Raw}", raw);
         }

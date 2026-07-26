@@ -6,16 +6,15 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.network.packet.c2s.play.HandSwingC2SPacket;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
 public class RightClickBlock extends Module {
@@ -103,7 +102,7 @@ public class RightClickBlock extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Pre event) {
-        if (mc.world == null || mc.player == null) return;
+        if (mc.level == null || mc.player == null) return;
 
         if (oneTime.get()) {
             double intervalMs = clearInterval.get() * 1000.0;
@@ -113,9 +112,9 @@ public class RightClickBlock extends Module {
             }
         }
 
-        if (mc.player.getMainHandStack().isEmpty() && mc.player.getOffHandStack().isEmpty()) return;
+        if (mc.player.getMainHandItem().isEmpty() && mc.player.getOffhandItem().isEmpty()) return;
 
-        BlockPos playerPos = mc.player.getBlockPos();
+        BlockPos playerPos = mc.player.blockPosition();
         int r = Math.max(0, (int) Math.floor(range.get()));
         Set<Block> targetBlocks = new HashSet<>(blocks.get());
 
@@ -123,8 +122,8 @@ public class RightClickBlock extends Module {
         if (selectedFaces.isEmpty()) return;
 
         outer:
-        for (BlockPos pos : BlockPos.iterate(playerPos.add(-r, -r, -r), playerPos.add(r, r, r))) {
-            BlockState state = mc.world.getBlockState(pos);
+        for (BlockPos pos : BlockPos.betweenClosed(playerPos.offset(-r, -r, -r), playerPos.offset(r, r, r))) {
+            BlockState state = mc.level.getBlockState(pos);
             if (!targetBlocks.contains(state.getBlock())) continue;
 
             boolean didAnyFaceThisBlock = false;
@@ -136,28 +135,28 @@ public class RightClickBlock extends Module {
                 if (oneTime.get() && usedFaces.contains(key)) continue;
 
                 if (checkSpaceAir.get()) {
-                    BlockPos neighbor = pos.offset(face);
-                    if (!mc.world.getBlockState(neighbor).isAir()) continue;
+                    BlockPos neighbor = pos.relative(face);
+                    if (!mc.level.getBlockState(neighbor).isAir()) continue;
                 }
 
-                Vec3d hitPos = faceCenter(pos, face);
-                if (mc.player.getEyePos().distanceTo(hitPos) > range.get()) continue;
+                Vec3 hitPos = faceCenter(pos, face);
+                if (mc.player.getEyePosition().distanceTo(hitPos) > range.get()) continue;
 
                 didAnyFaceThisBlock = true;
 
                 Rotations.rotate(Rotations.getYaw(hitPos), Rotations.getPitch(hitPos), () -> {
                     switch (useHand.get()) {
                         case Main -> {
-                            interactBlock(pos, face, hitPos, Hand.MAIN_HAND);
+                            interactBlock(pos, face, hitPos, InteractionHand.MAIN_HAND);
                         }
                         case Off -> {
-                            interactBlock(pos, face, hitPos, Hand.OFF_HAND);
+                            interactBlock(pos, face, hitPos, InteractionHand.OFF_HAND);
                         }
                         case Both -> {
-                            if (!mc.player.getMainHandStack().isEmpty())
-                                interactBlock(pos, face, hitPos, Hand.MAIN_HAND);
-                            if (!mc.player.getOffHandStack().isEmpty())
-                                interactBlock(pos, face, hitPos, Hand.OFF_HAND);
+                            if (!mc.player.getMainHandItem().isEmpty())
+                                interactBlock(pos, face, hitPos, InteractionHand.MAIN_HAND);
+                            if (!mc.player.getOffhandItem().isEmpty())
+                                interactBlock(pos, face, hitPos, InteractionHand.OFF_HAND);
                         }
                     }
                     if (oneTime.get()) usedFaces.add(new FaceKey(pos, face));
@@ -179,8 +178,8 @@ public class RightClickBlock extends Module {
         return list;
     }
 
-    private Vec3d faceCenter(BlockPos pos, Direction dir) {
-        Vec3d c = Vec3d.ofCenter(pos);
+    private Vec3 faceCenter(BlockPos pos, Direction dir) {
+        Vec3 c = Vec3.atCenterOf(pos);
         switch (dir) {
             case UP:    return c.add(0, 0.5, 0);
             case DOWN:  return c.add(0, -0.5, 0);
@@ -192,11 +191,11 @@ public class RightClickBlock extends Module {
         }
     }
 
-    private void interactBlock(BlockPos pos, Direction face, Vec3d hitPos, Hand hand) {
-        if (mc.world == null || mc.interactionManager == null) return;
+    private void interactBlock(BlockPos pos, Direction face, Vec3 hitPos, InteractionHand hand) {
+        if (mc.level == null || mc.gameMode == null) return;
         BlockHitResult bhr = new BlockHitResult(hitPos, face, pos, false);
-        mc.interactionManager.interactBlock(mc.player, hand, bhr);
-        mc.getNetworkHandler().sendPacket(new HandSwingC2SPacket(hand));
+        mc.gameMode.useItemOn(mc.player, hand, bhr);
+        mc.getConnection().send(new ServerboundSwingPacket(hand));
     }
 
     private static final class FaceKey {

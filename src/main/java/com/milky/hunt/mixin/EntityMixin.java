@@ -2,8 +2,8 @@ package com.milky.hunt.mixin;
 
 import com.milky.hunt.modules.BoostedBounce;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityPose;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Pose;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -23,28 +23,28 @@ public class EntityMixin
 
     BoostedBounce efly = Modules.get().get(BoostedBounce.class);
 
-    @Inject(at = @At("HEAD"), method = "Lnet/minecraft/entity/Entity;getPose()Lnet/minecraft/entity/EntityPose;", cancellable = true)
-    private void getPose(CallbackInfoReturnable<EntityPose> cir)
+    @Inject(at = @At("HEAD"), method = "getPose()Lnet/minecraft/world/entity/Pose;", cancellable = true)
+    private void getPose(CallbackInfoReturnable<Pose> cir)
     {
-        if (efly != null && efly.enabled() && this.uuid == mc.player.getUuid())
+        if (efly != null && efly.enabled() && this.uuid == mc.player.getUUID())
         {
-            cir.setReturnValue(EntityPose.STANDING);
+            cir.setReturnValue(Pose.STANDING);
         }
     }
 
-    @Inject(at = @At("HEAD"), method = "Lnet/minecraft/entity/Entity;isSprinting()Z", cancellable = true)
+    @Inject(at = @At("HEAD"), method = "isSprinting()Z", cancellable = true)
     private void isSprinting(CallbackInfoReturnable<Boolean> cir)
     {
-        if (efly != null && efly.enabled() && this.uuid == mc.player.getUuid())
+        if (efly != null && efly.enabled() && this.uuid == mc.player.getUUID())
         {
             cir.setReturnValue(true);
         }
     }
 
-    @Inject(at = @At("HEAD"), method = "pushAwayFrom", cancellable = true)
+    @Inject(at = @At("HEAD"), method = "push(Lnet/minecraft/world/entity/Entity;)V", cancellable = true)
     private void pushAwayFrom(Entity entity, CallbackInfo ci)
     {
-        if (mc.player != null && this.uuid == mc.player.getUuid() && efly != null && efly.enabled() && !entity.getUuid().equals(this.uuid))
+        if (mc.player != null && this.uuid == mc.player.getUUID() && efly != null && efly.enabled() && !entity.getUUID().equals(this.uuid))
         {
             ci.cancel();
         }

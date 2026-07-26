@@ -90,21 +90,21 @@ public class RotationLock extends Module {
     }
 
     private float getSmartYawDirection() {
-        return Math.round((mc.player.getYaw() + 1f) / 45f) * 45f;
+        return Math.round((mc.player.getYRot() + 1f) / 45f) * 45f;
     }
 
     private float getSmartPitchDirection() {
-        return Math.round((mc.player.getPitch() + 1f) / 30f) * 30f;
+        return Math.round((mc.player.getXRot() + 1f) / 30f) * 30f;
     }
 
     private void setYawAngle(float yawAngle) {
-        mc.player.setYaw(yawAngle);
-        mc.player.headYaw = yawAngle;
-        mc.player.bodyYaw = yawAngle;
+        mc.player.setYRot(yawAngle);
+        mc.player.yHeadRot = yawAngle;
+        mc.player.yBodyRot = yawAngle;
     }
 
     private void setPitchAngle(float pitchAngle) {
-        mc.player.setPitch(pitchAngle);
+        mc.player.setXRot(pitchAngle);
     }
 
     public enum LockMode {

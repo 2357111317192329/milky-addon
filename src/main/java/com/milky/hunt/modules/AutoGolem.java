@@ -7,18 +7,18 @@ import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
-import net.minecraft.network.packet.c2s.play.PlayerInteractBlockC2SPacket;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -130,21 +130,21 @@ public class AutoGolem extends Module {
         waitingForNextLoop = false;
         waitingForSlotSync = false;
 
-        Vec3d dir = mc.player.getRotationVec(1.0f);
-        Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
-        BlockPos basePos = BlockPos.ofFloored(target);
+        Vec3 dir = mc.player.getViewVector(1.0f);
+        Vec3 horizontal = new Vec3(dir.x, 0, dir.z).normalize().scale(2.0);
+        Vec3 target = mc.player.position().add(horizontal).add(0, 2, 0);
+        BlockPos basePos = BlockPos.containing(target);
 
         snowmanBlocks.add(basePos);
-        snowmanBlocks.add(basePos.up());
-        snowmanBlocks.add(basePos.up(2));
+        snowmanBlocks.add(basePos.above());
+        snowmanBlocks.add(basePos.above(2));
 
         int snowBlockCount = 0;
         int pumpkinCount = 0;
         for (int i = 0; i < 36; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
-            if (item == Items.SNOW_BLOCK) snowBlockCount += mc.player.getInventory().getStack(i).getCount();
-            if (item == Items.CARVED_PUMPKIN) pumpkinCount += mc.player.getInventory().getStack(i).getCount();
+            Item item = mc.player.getInventory().getItem(i).getItem();
+            if (item == Items.SNOW_BLOCK) snowBlockCount += mc.player.getInventory().getItem(i).getCount();
+            if (item == Items.CARVED_PUMPKIN) pumpkinCount += mc.player.getInventory().getItem(i).getCount();
         }
 
         if (snowBlockCount < 2) {
@@ -160,7 +160,7 @@ public class AutoGolem extends Module {
         }
 
         for (int i = 0; i < 9; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
+            Item item = mc.player.getInventory().getItem(i).getItem();
             if (item == Items.SNOW_BLOCK) {
                 mc.player.getInventory().setSelectedSlot(i);
                 break;
@@ -176,10 +176,10 @@ public class AutoGolem extends Module {
         waitingForNextLoop = false;
         waitingForSlotSync = false;
 
-        Vec3d dir = mc.player.getRotationVec(1.0f);
-        Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 3, 0);
-        BlockPos basePos = BlockPos.ofFloored(target);
+        Vec3 dir = mc.player.getViewVector(1.0f);
+        Vec3 horizontal = new Vec3(dir.x, 0, dir.z).normalize().scale(2.0);
+        Vec3 target = mc.player.position().add(horizontal).add(0, 3, 0);
+        BlockPos basePos = BlockPos.containing(target);
 
         // Iron Golem body structure
         ironmanBlocks.add(basePos);                     // center iron block
@@ -191,9 +191,9 @@ public class AutoGolem extends Module {
         int ironCount = 0;
         int pumpkinCount = 0;
         for (int i = 0; i < 36; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
-            if (item == Items.IRON_BLOCK) ironCount += mc.player.getInventory().getStack(i).getCount();
-            if (item == Items.CARVED_PUMPKIN) pumpkinCount += mc.player.getInventory().getStack(i).getCount();
+            Item item = mc.player.getInventory().getItem(i).getItem();
+            if (item == Items.IRON_BLOCK) ironCount += mc.player.getInventory().getItem(i).getCount();
+            if (item == Items.CARVED_PUMPKIN) pumpkinCount += mc.player.getInventory().getItem(i).getCount();
         }
 
         if (ironCount < 4) {
@@ -209,7 +209,7 @@ public class AutoGolem extends Module {
         }
 
         for (int i = 0; i < 9; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
+            Item item = mc.player.getInventory().getItem(i).getItem();
             if (item == Items.IRON_BLOCK) {
                 mc.player.getInventory().setSelectedSlot(i);
                 break;
@@ -224,26 +224,26 @@ public class AutoGolem extends Module {
         delay = 0;
         waitingForSlotSync = false;
 
-        Vec3d dir = mc.player.getRotationVec(1.0f);
-        Vec3d horizontal = new Vec3d(dir.x, 0, dir.z).normalize().multiply(2.0);
-        Vec3d target = mc.player.getEntityPos().add(horizontal).add(0, 2, 0);
-        BlockPos basePos = BlockPos.ofFloored(target);
+        Vec3 dir = mc.player.getViewVector(1.0f);
+        Vec3 horizontal = new Vec3(dir.x, 0, dir.z).normalize().scale(2.0);
+        Vec3 target = mc.player.position().add(horizontal).add(0, 2, 0);
+        BlockPos basePos = BlockPos.containing(target);
 
         // Wither body structure
         witherBlocks.add(basePos);
         witherBlocks.add(basePos.west());
         witherBlocks.add(basePos.east());
-        witherBlocks.add(basePos.down());
-        witherBlocks.add(basePos.up().west());
-        witherBlocks.add(basePos.up());
-        witherBlocks.add(basePos.up().east());
+        witherBlocks.add(basePos.below());
+        witherBlocks.add(basePos.above().west());
+        witherBlocks.add(basePos.above());
+        witherBlocks.add(basePos.above().east());
 
         int soulCount = 0;
         int skullCount = 0;
         for (int i = 0; i < 36; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
-            if (item == Items.SOUL_SAND) soulCount += mc.player.getInventory().getStack(i).getCount();
-            if (item == Items.WITHER_SKELETON_SKULL) skullCount += mc.player.getInventory().getStack(i).getCount();
+            Item item = mc.player.getInventory().getItem(i).getItem();
+            if (item == Items.SOUL_SAND) soulCount += mc.player.getInventory().getItem(i).getCount();
+            if (item == Items.WITHER_SKELETON_SKULL) skullCount += mc.player.getInventory().getItem(i).getCount();
         }
 
         if (soulCount < 4) {
@@ -259,7 +259,7 @@ public class AutoGolem extends Module {
         }
 
         for (int i = 0; i < 9; i++) {
-            Item item = mc.player.getInventory().getStack(i).getItem();
+            Item item = mc.player.getInventory().getItem(i).getItem();
             if (item == Items.SOUL_SAND) {
                 mc.player.getInventory().setSelectedSlot(i);
                 break;
@@ -312,7 +312,7 @@ public class AutoGolem extends Module {
 }
     
      private void onTickSnowman(TickEvent.Post event) {
-    if (mc.player == null || mc.world == null) return;
+    if (mc.player == null || mc.level == null) return;
 
     if (waitingForNextLoop) {
         loopDelayTimer++;
@@ -345,10 +345,10 @@ public class AutoGolem extends Module {
     for (int i = 0; i < blocksPerTick.get() && index < snowmanBlocks.size(); i++) {
         BlockPos pos = snowmanBlocks.get(index);
 
-        if (!mc.world.getBlockState(pos).isReplaceable()) {
+        if (!mc.level.getBlockState(pos).canBeReplaced()) {
             if (!waitingForBreak.contains(pos)) {
-                mc.interactionManager.attackBlock(pos, Direction.UP);
-                mc.player.swingHand(Hand.MAIN_HAND);
+                mc.gameMode.startDestroyBlock(pos, Direction.UP);
+                mc.player.swing(InteractionHand.MAIN_HAND);
                 waitingForBreak.add(pos);
             }
             return;
@@ -361,7 +361,7 @@ public class AutoGolem extends Module {
         int slotToSelect = -1;
         boolean foundItem = false;
         for (int slot = 0; slot < 9; slot++) {
-            if (mc.player.getInventory().getStack(slot).getItem() == needed) {
+            if (mc.player.getInventory().getItem(slot).getItem() == needed) {
                 slotToSelect = slot;
                 foundItem = true;
                 break;
@@ -369,7 +369,7 @@ public class AutoGolem extends Module {
         }
 
         if (!foundItem) {
-            error("Missing required block: " + needed.getName().getString());
+            error("Missing required block: " + Names.get(needed));
             toggle();
             return;
         }
@@ -380,21 +380,21 @@ public class AutoGolem extends Module {
             return;
         }
 
-        if (!(mc.player.getMainHandStack().getItem() instanceof BlockItem)) {
+        if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) {
             error("Main hand item is not a block.");
             toggle();
             return;
         }
 
-        BlockHitResult bhr = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
+        BlockHitResult bhr = new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
 
-        mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-            PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-        mc.player.networkHandler.sendPacket(new PlayerInteractBlockC2SPacket(
-            Hand.OFF_HAND, bhr, mc.player.currentScreenHandler.getRevision() + 2));
-        mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-            PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-        mc.player.swingHand(Hand.MAIN_HAND);
+        mc.player.connection.send(new ServerboundPlayerActionPacket(
+            ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+        mc.player.connection.send(new ServerboundUseItemOnPacket(
+            InteractionHand.OFF_HAND, bhr, mc.player.containerMenu.getStateId() + 2));
+        mc.player.connection.send(new ServerboundPlayerActionPacket(
+            ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+        mc.player.swing(InteractionHand.MAIN_HAND);
 
         index++;
     }
@@ -404,7 +404,7 @@ public class AutoGolem extends Module {
 
     private void onTickIronman(TickEvent.Post event) {
         
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         if (waitingForNextLoop) {
             loopDelayTimer++;
@@ -437,10 +437,10 @@ public class AutoGolem extends Module {
         for (int i = 0; i < blocksPerTick.get() && index < ironmanBlocks.size(); i++) {
             BlockPos pos = ironmanBlocks.get(index);
 
-            if (!mc.world.getBlockState(pos).isReplaceable()) {
+            if (!mc.level.getBlockState(pos).canBeReplaced()) {
                 if (!waitingForBreak.contains(pos)) {
-                    mc.interactionManager.attackBlock(pos, Direction.UP);
-                    mc.player.swingHand(Hand.MAIN_HAND);
+                    mc.gameMode.startDestroyBlock(pos, Direction.UP);
+                    mc.player.swing(InteractionHand.MAIN_HAND);
                     waitingForBreak.add(pos);
                 }
                 return;
@@ -453,7 +453,7 @@ public class AutoGolem extends Module {
             int slotToSelect = -1;
             boolean foundItem = false;
             for (int slot = 0; slot < 9; slot++) {
-                if (mc.player.getInventory().getStack(slot).getItem() == needed) {
+                if (mc.player.getInventory().getItem(slot).getItem() == needed) {
                     slotToSelect = slot;
                     foundItem = true;
                     break;
@@ -461,7 +461,7 @@ public class AutoGolem extends Module {
             }
 
             if (!foundItem) {
-                error("Missing required block: " + needed.getName().getString());
+                error("Missing required block: " + Names.get(needed));
                 toggle();
                 return;
             }
@@ -472,21 +472,21 @@ public class AutoGolem extends Module {
                 return;
             }
 
-            if (!(mc.player.getMainHandStack().getItem() instanceof BlockItem)) {
+            if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) {
                 error("Main hand item is not a block.");
                 toggle();
                 return;
             }
 
-            BlockHitResult bhr = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
+            BlockHitResult bhr = new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false);
 
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-            mc.player.networkHandler.sendPacket(new PlayerInteractBlockC2SPacket(
-                Hand.OFF_HAND, bhr, mc.player.currentScreenHandler.getRevision() + 2));
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            mc.player.connection.send(new ServerboundUseItemOnPacket(
+                InteractionHand.OFF_HAND, bhr, mc.player.containerMenu.getStateId() + 2));
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            mc.player.swing(InteractionHand.MAIN_HAND);
 
             index++;
         }
@@ -495,7 +495,7 @@ public class AutoGolem extends Module {
 }
     private void onTickWither(TickEvent.Post event) {
         
-        if (mc.player == null || mc.world == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         if (waitingForSlotSync) {
             waitingForSlotSync = false;
@@ -514,10 +514,10 @@ public class AutoGolem extends Module {
         for (int i = 0; i < blocksPerTick.get() && index < witherBlocks.size(); i++) {
             BlockPos pos = witherBlocks.get(index);
 
-            if (!mc.world.getBlockState(pos).isReplaceable()) {
+            if (!mc.level.getBlockState(pos).canBeReplaced()) {
                 if (!waitingForBreak.contains(pos)) {
-                    mc.interactionManager.attackBlock(pos, Direction.UP);
-                    mc.player.swingHand(Hand.MAIN_HAND);
+                    mc.gameMode.startDestroyBlock(pos, Direction.UP);
+                    mc.player.swing(InteractionHand.MAIN_HAND);
                     waitingForBreak.add(pos);
                 }
                 return;
@@ -530,7 +530,7 @@ public class AutoGolem extends Module {
             int slotToSelect = -1;
             boolean foundItem = false;
             for (int slot = 0; slot < 9; slot++) {
-                if (mc.player.getInventory().getStack(slot).getItem() == needed) {
+                if (mc.player.getInventory().getItem(slot).getItem() == needed) {
                     slotToSelect = slot;
                     foundItem = true;
                     break;
@@ -538,7 +538,7 @@ public class AutoGolem extends Module {
             }
 
             if (!foundItem) {
-                error("Missing required block: " + needed.getName().getString());
+                error("Missing required block: " + Names.get(needed));
                 toggle();
                 return;
             }
@@ -549,7 +549,7 @@ public class AutoGolem extends Module {
                 return;
             }
 
-            if (!(mc.player.getMainHandStack().getItem() instanceof BlockItem)) {
+            if (!(mc.player.getMainHandItem().getItem() instanceof BlockItem)) {
                 error("Main hand item is not a block.");
                 toggle();
                 return;
@@ -559,20 +559,20 @@ public class AutoGolem extends Module {
             Direction direction = Direction.UP;
 
             if (needed == Items.WITHER_SKELETON_SKULL) {
-                placeOn = pos.down();
+                placeOn = pos.below();
                 direction = Direction.UP;
             }
 
-            BlockHitResult bhr = new BlockHitResult(Vec3d.ofCenter(placeOn), direction, placeOn, false);
+            BlockHitResult bhr = new BlockHitResult(Vec3.atCenterOf(placeOn), direction, placeOn, false);
 
 
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-            mc.player.networkHandler.sendPacket(new PlayerInteractBlockC2SPacket(
-                Hand.OFF_HAND, bhr, mc.player.currentScreenHandler.getRevision() + 2));
-            mc.player.networkHandler.sendPacket(new PlayerActionC2SPacket(
-                PlayerActionC2SPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ORIGIN, Direction.DOWN));
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            mc.player.connection.send(new ServerboundUseItemOnPacket(
+                InteractionHand.OFF_HAND, bhr, mc.player.containerMenu.getStateId() + 2));
+            mc.player.connection.send(new ServerboundPlayerActionPacket(
+                ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            mc.player.swing(InteractionHand.MAIN_HAND);
 
             index++;
         }
