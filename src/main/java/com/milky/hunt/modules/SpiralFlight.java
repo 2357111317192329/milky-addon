@@ -8,6 +8,7 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Mth;
 
@@ -29,6 +30,13 @@ public class SpiralFlight extends Module {
         .name("clockwise")
         .description("Visual clockwise if true; visual counterclockwise if false")
         .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<BlockPos> center = sgGeneral.add(new BlockPosSetting.Builder()
+        .name("center")
+        .description("Spiral center; can be changed here, via the reset keybind, or set automatically on first use")
+        .defaultValue(new BlockPos(0, 0, 0))
         .build()
     );
     private final Setting<Keybind> reset = sgControl.add(new KeybindSetting.Builder()
@@ -119,9 +127,9 @@ public class SpiralFlight extends Module {
     private Phase phase;
 
     private double thetaOnPath = 0.0;
-    private double centerXrt = 0.0;
-    private double centerZrt = 0.0;
+    private double radiusOffset = 0.0;
     private int init = 0;
+    private boolean needResync = true;
 
     public SpiralFlight() {
         super(Addon.MilkyModCategory, "SpiralFlight", "Fly an Archimedean spiral.");
@@ -131,11 +139,16 @@ public class SpiralFlight extends Module {
     public void onActivate() {
         if (mc.player == null || mc.level == null) { toggle(); return; }
         if(init==0){
-            centerXrt = mc.player.getX();
-            centerZrt = mc.player.getZ();
-            thetaOnPath = 0.0;
+            // First use ever: adopt the current position as the spiral center, so the player
+            // does not have to look up the coordinates. Afterwards the center is fully editable
+            // through the "center" setting or the reset keybind.
+            center.set(mc.player.blockPosition());
             init=1;
         }
+        // The path angle is never carried over from the previous session: it belongs to the
+        // position where the module was last disabled. On the first tick the spiral is rebuilt
+        // from the current position, the stored center and the winding direction.
+        needResync = true;
         phase = Phase.SPIRAL;
     }
 
@@ -146,33 +159,42 @@ public class SpiralFlight extends Module {
     @Override
     public CompoundTag toTag() {
         CompoundTag tag = super.toTag();
-        tag.putDouble("centerXrt", centerXrt);
-        tag.putDouble("centerZrt", centerZrt);
-        tag.putDouble("thetaOnPath", thetaOnPath); 
+        // The center is a BlockPosSetting, so super.toTag() already saved it under "settings".
         tag.putInt("init", init);
         return tag;
     }
     @Override
     public Module fromTag(CompoundTag tag) {
-        if (tag.contains("centerXrt")) centerXrt = Utils.NbtgetDouble(tag,"centerXrt",0.0);
-        if (tag.contains("centerZrt")) centerZrt = Utils.NbtgetDouble(tag,"centerZrt",0.0);
-        if (tag.contains("thetaOnPath")) thetaOnPath = Utils.NbtgetDouble(tag,"thetaOnPath",0.0);
-        if (tag.contains("init")) init = Utils.NbtgetInt(tag,"init",0);
-        return super.fromTag(tag);
+        // Migrate saves from before the center became a setting: adopt the old coordinates
+        // (only after super.fromTag so a newer save with a real "center" setting wins).
+        boolean oldCenter = tag.contains("centerXrt") && tag.contains("centerZrt");
+        Module m = super.fromTag(tag);
+        if (oldCenter) {
+            center.set(new BlockPos(Mth.floor(Utils.NbtgetDouble(tag, "centerXrt", 0.0)),
+                                    0,
+                                    Mth.floor(Utils.NbtgetDouble(tag, "centerZrt", 0.0))));
+        }
+        if (tag.contains("init")) init = Utils.NbtgetInt(tag, "init", 0);
+        needResync = true;
+        return m;
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onTick(TickEvent.Pre event) {
         if (mc.player == null || mc.level == null) return;
         if (phase != Phase.SPIRAL) return;
         if (reset.get().isPressed()){
-            centerXrt = mc.player.getX();
-            centerZrt = mc.player.getZ();
-            thetaOnPath = 0.0;
+            center.set(mc.player.blockPosition());
+            needResync = true;
         }
 
         final double qx = mc.player.getX(), qz = mc.player.getZ();
         final double B  = ringSpacing.get() / (2.0 * Math.PI);
         final boolean cwVisual = clockwise.get();
+
+        if (needResync) {
+            syncToPlayer(qx, qz, B, cwVisual);
+            needResync = false;
+        }
 
         final double s  = chordLen.get();
         final double L  = lookahead.get();
@@ -180,13 +202,12 @@ public class SpiralFlight extends Module {
         final double dtMinVal = dtMin.get();
         final double dtMaxVal = dtMax.get();
 
-        double tauHere = cwVisual ? +thetaOnPath : -thetaOnPath;
-        double rHere = Math.max(0.0, B * tauHere);
+        double rHere = radiusAt(thetaOnPath, B, cwVisual);
         double dthetaMag = s / Math.max(1e-6, Math.sqrt(rHere * rHere + B * B));
         dthetaMag = clampAbs(dthetaMag, dtMinVal, dtMaxVal);
         double dthetaStep = cwVisual ? +dthetaMag : -dthetaMag;
 
-        double[] nearest = nearestOnCurve(thetaOnPath, B, centerXrt, centerZrt, qx, qz, cwVisual,
+        double[] nearest = nearestOnCurve(thetaOnPath, B, qx, qz, cwVisual,
                 searchWindow.get(), nearestSamples.get(), refineIters.get());
         double thetaNearest = nearest[0];
         double distNearest  = nearest[1];
@@ -200,8 +221,10 @@ public class SpiralFlight extends Module {
         }
 
         final double thetaLook = integrateLookahead(thetaBase, L, B, cwVisual, s, dtMinVal, dtMaxVal);
-        final double[] pStar = posPolar(thetaLook, B, centerXrt, centerZrt, cwVisual);
-        final double yawTargetDeg = Math.toDegrees(Math.atan2(pStar[1] - qz, pStar[0] - qx));
+        final double[] pStar = posPolar(thetaLook, B, cwVisual);
+        // Minecraft yaw: +Z (south) is 0 degrees, +X (east) is -90, -X (west) is +90, -Z (north) is +-180.
+        // For a direction vector (dx, dz) the yaw is atan2(-dx, dz).
+        final double yawTargetDeg = Math.toDegrees(Math.atan2(-(pStar[0] - qx), pStar[1] - qz));
         faceYawSmooth((float) yawTargetDeg, yawRateDegPerTick.get().floatValue());
     }
 
@@ -213,12 +236,18 @@ public class SpiralFlight extends Module {
         return s * a;
     }
 
-    private static double[] posPolar(double theta, double B, double xc, double zc, boolean cwVisual) {
-        double tau = cwVisual ? +theta : -theta;
-        double r = Math.max(0.0, B * tau);
-        double x = xc + r * Math.cos(theta);
-        double z = zc + r * Math.sin(theta);
-        return new double[] { x, z };
+    /**
+     * Radius of the path at parameter {@code theta}. The spiral keeps its pitch (one extra ring
+     * every 2*pi radians) around the fixed center; {@link #radiusOffset} shifts the whole spiral
+     * so that it starts exactly at the position where the module was enabled.
+     */
+    private double radiusAt(double theta, double B, boolean cwVisual) {
+        return Math.max(0.0, B * (cwVisual ? theta : -theta) + radiusOffset);
+    }
+
+    private double[] posPolar(double theta, double B, boolean cwVisual) {
+        double r = radiusAt(theta, B, cwVisual);
+        return new double[] { center.get().getX() + r * Math.cos(theta), center.get().getZ() + r * Math.sin(theta) };
     }
 
     private void faceYawSmooth(float yawTargetDeg, float maxDeltaDeg) {
@@ -239,14 +268,13 @@ public class SpiralFlight extends Module {
         return f;
     }
 
-    private static double integrateLookahead(double theta0, double L, double B, boolean cwVisual,
-                                             double s, double dtMinVal, double dtMaxVal) {
+    private double integrateLookahead(double theta0, double L, double B, boolean cwVisual,
+                                      double s, double dtMinVal, double dtMaxVal) {
         double acc = 0.0;
         double theta = theta0;
         int guard = 0;
         while (acc < L && guard++ < 4096) {
-            double tau = cwVisual ? +theta : -theta;
-            double r = Math.max(0.0, B * tau);
+            double r = radiusAt(theta, B, cwVisual);
             double dthetaMag = s / Math.max(1e-6, Math.sqrt(r * r + B * B));
             dthetaMag = clampAbs(dthetaMag, dtMinVal, dtMaxVal);
             double dtheta = cwVisual ? +dthetaMag : -dthetaMag;
@@ -257,14 +285,14 @@ public class SpiralFlight extends Module {
     }
 
     private double[] nearestOnCurve(double thetaCenter, double B,
-                                    double xc, double zc, double qx, double qz, boolean cwVisual,
+                                    double qx, double qz, boolean cwVisual,
                                     double windowRad, int samples, int refine) {
         double bestTheta = thetaCenter;
         double bestD2 = Double.MAX_VALUE;
 
         for (int i = 0; i < samples; i++) {
             double t = thetaCenter + (((double) i) / (samples - 1) - 0.5) * 2.0 * windowRad;
-            double d2 = dist2AtTheta(t, B, xc, zc, qx, qz, cwVisual);
+            double d2 = dist2AtTheta(t, B, qx, qz, cwVisual);
             if (d2 < bestD2) { bestD2 = d2; bestTheta = t; }
         }
 
@@ -273,19 +301,33 @@ public class SpiralFlight extends Module {
         for (int k = 0; k < refine; k++) {
             double m1 = left + (right - left) / 3.0;
             double m2 = right - (right - left) / 3.0;
-            double d1 = dist2AtTheta(m1, B, xc, zc, qx, qz, cwVisual);
-            double d2 = dist2AtTheta(m2, B, xc, zc, qx, qz, cwVisual);
+            double d1 = dist2AtTheta(m1, B, qx, qz, cwVisual);
+            double d2 = dist2AtTheta(m2, B, qx, qz, cwVisual);
             if (d1 < d2) { right = m2; bestTheta = m1; bestD2 = d1; }
             else { left = m1; bestTheta = m2; bestD2 = d2; }
         }
         return new double[] { bestTheta, Math.sqrt(bestD2) };
     }
 
-    private static double dist2AtTheta(double t, double B,
-                                       double xc, double zc, double qx, double qz, boolean cwVisual) {
-        double[] p = posPolar(t, B, xc, zc, cwVisual);
+    private double dist2AtTheta(double t, double B, double qx, double qz, boolean cwVisual) {
+        double[] p = posPolar(t, B, cwVisual);
         double dx = p[0] - qx, dz = p[1] - qz;
         return dx * dx + dz * dz;
+    }
+
+    /**
+     * Rebuilds the path so that it starts exactly at (qx, qz) while keeping the stored center
+     * and the configured ring pitch. The heading at that point is then the tangent of the circle
+     * through (qx, qz), so enabling the module anywhere continues the spiral from where the
+     * player actually is instead of advancing from a stale angle.
+     */
+    private void syncToPlayer(double qx, double qz, double B, boolean cwVisual) {
+        double dx = qx - center.get().getX();
+        double dz = qz - center.get().getZ();
+        double r = Math.hypot(dx, dz);
+        double phi = (r < 1e-6) ? 0.0 : Math.atan2(dz, dx);
+        thetaOnPath = phi;
+        radiusOffset = r - B * (cwVisual ? phi : -phi);
     }
 
     private static double advanceMonotonic(double current, double target, double maxStep, boolean cwVisual) {
